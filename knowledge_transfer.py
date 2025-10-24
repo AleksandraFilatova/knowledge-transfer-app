@@ -169,13 +169,17 @@ def process_text_with_images(text):
                     st.markdown(part)
             else:  # Шлях до зображення
                 image_path = part.strip()
-                # Перевіряємо, чи це локальний шлях, і замінюємо на GitHub URL
-                if image_path.startswith('C:\\') and 'PL-notebook.png' in image_path:
-                    # Замінюємо локальний шлях на GitHub URL
-                    github_url = "https://raw.githubusercontent.com/AleksandraFilatova/knowledge-transfer-app/main/Image/Sac-notebook.PNG"
-                    display_image_from_path(github_url, width=600)
-                else:
-                    display_image_from_path(image_path, width=600)
+        # Перевіряємо, чи це локальний шлях, і замінюємо на GitHub URL
+        if image_path.startswith('C:\\') and 'PL-notebook.png' in image_path:
+            # Замінюємо локальний шлях на GitHub URL
+            github_url = "https://raw.githubusercontent.com/AleksandraFilatova/knowledge-transfer-app/main/Image/Sac-notebook.PNG"
+            display_image_from_path(github_url, width=600)
+        elif 'github.com' in image_path and '/blob/' in image_path:
+            # Автоматично виправляємо GitHub blob URL на raw URL
+            raw_url = image_path.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/')
+            display_image_from_path(raw_url, width=600)
+        else:
+            display_image_from_path(image_path, width=600)
     else:
         # Якщо немає зображень, просто показуємо текст
         st.markdown(text)
