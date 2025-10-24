@@ -718,24 +718,28 @@ elif section == "✏️ Редагування даних":
 # ==================== КОНТАКТИ ТА РЕСУРСИ ====================
 elif section == "📞 Контакти та ресурси":
     st.header("📞 Контакти та ресурси")
-    st.subheader("👥 Команда")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("""
-        ### Data Engineering Team
-        - **Керівник команди:** Олександра Філатова
-        - **Email:** oleksandra.filatova@darnitsa.com
-        - **Телефон:** +380 XX XXX-XX-XX
-        - **Telegram:** @oleksandra_filatova
-        """)
-    with col2:
-        st.markdown("""
-        ### Power BI Team
-        - **Керівник команди:** [Ім'я]
-        - **Email:** [email]
-        - **Телефон:** +380 XX XXX-XX-XX
-        - **Telegram:** @[username]
-        """)
+    st.subheader("👥 Наша команда")
+    
+    # Команда в одному блоці
+    st.markdown("""
+    ### 🏢 OurTeam
+    
+    **Zhovtiuk Svitlana**  
+    Керівник групи  
+    📧 s.zhovtiuk@darnytsia.ua
+    
+    **Filatova Oleksandra**  
+    Менеджер з бізнес аналітики  
+    📧 oleksandra.filatova@darnytsia.ua
+    
+    **Bohdanyk Oleksandr**  
+    Менеджер з бізнес аналітики  
+    📧 o.bohdanyk@darnytsia.ua
+    
+    **Taranenko Oleksandr**  
+    Менеджер з бізнес аналітики  
+    📧 o.taranenko@darnytsia.ua
+    """)
     
     st.subheader("🔗 Корисні посилання")
     col1, col2 = st.columns(2)
@@ -762,4 +766,5 @@ elif section == "📞 Контакти та ресурси":
     """)
 
 # ==================== КОНТАКТИ ====================
+
 
