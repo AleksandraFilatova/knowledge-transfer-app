@@ -177,6 +177,17 @@ def process_text_with_images(text):
         # Якщо немає зображень, просто показуємо текст
         st.markdown(text)
 
+def save_data_to_excel(df, filename):
+    """
+    Зберігає DataFrame в Excel файл
+    """
+    try:
+        df.to_excel(filename, index=False)
+        return True
+    except Exception as e:
+        st.error(f"❌ Помилка при збереженні: {e}")
+        return False
+
 def create_lakes_visualization(lakes_df):
     """
     Створює візуалізації для даних лейків
@@ -320,6 +331,7 @@ section = st.sidebar.radio(
     ["🏠 Головна", 
      "💧 Оновлення Data Lakes", 
      "📊 Оновлення Power BI звітів",
+     "✏️ Редагування даних",
      "🔌 Підключення джерел",
      "🆘 Troubleshooting",
      "📞 Контакти та ресурси"]
@@ -340,7 +352,7 @@ st.sidebar.code("http://192.168.1.105:8501")
 # === ДИНАМИЧЕСКИЙ ЗАПРОС таблицы Excel для Lakes & reports ===
 # Перевіряємо, чи файл існує локально
 if os.path.exists(EXCEL_FILE_PATH):
-    lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
+lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
 else:
     # Якщо файл не знайдено, пропонуємо завантажити
     st.warning("⚠️ Файл LakeHouse.xlsx не знайдено. Будь ласка, завантажте файл:")
@@ -366,6 +378,12 @@ if section == "🏠 Головна":
 
     **⚡️ Тепер список лейків і звітів зчитується з таблиці Excel**  
     Можна легко коригувати склад без зміни коду!
+    
+    ### 📝 Як оновити дані:
+    1. **Перейдіть в розділ "Редагування даних"** (в меню зліва)
+    2. **Редагуйте дані прямо в таблиці** - зміни зберігаються автоматично
+    3. **Додавайте нові записи** через форму
+    4. **Зміни відображаються** миттєво для всіх користувачів
     
     **Excel файл:** `{}`  
     """.format(EXCEL_FILE_PATH))
@@ -911,6 +929,83 @@ elif section == "🆘 Troubleshooting":
     """)
 
 # ==================== КОНТАКТИ ====================
+# ==================== РЕДАГУВАННЯ ДАНИХ ====================
+elif section == "✏️ Редагування даних":
+    st.header("✏️ Редагування даних")
+    
+    if lakes_table is not None and not lakes_table.empty:
+        st.subheader("📊 Поточні дані")
+        st.info("💡 Редагуйте дані прямо в таблиці. Зміни зберігаються автоматично!")
+        
+        # Показуємо таблицю для редагування
+        edited_df = st.data_editor(
+            lakes_table,
+            use_container_width=True,
+            num_rows="dynamic",
+            key="data_editor"
+        )
+        
+        # Автоматичне збереження при змінах
+        if not edited_df.equals(lakes_table):
+            if save_data_to_excel(edited_df, "LakeHouse.xlsx"):
+                st.success("✅ Зміни збережено автоматично!")
+                st.rerun()
+        
+        # Кнопки для додаткових дій
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("🔄 Оновити дані"):
+                st.rerun()
+        
+        with col2:
+            csv = edited_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Завантажити CSV",
+                data=csv,
+                file_name=f"lakes_data_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+        
+        # Додаємо новий рядок
+        st.subheader("➕ Додати новий запис")
+        
+        with st.form("add_new_record"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                new_lakehouse = st.text_input("LakeHouse *", help="Обов'язкове поле")
+                new_folder = st.text_input("Folder *", help="Обов'язкове поле")
+                new_element = st.text_input("Element *", help="Обов'язкове поле")
+                new_url = st.text_input("URL")
+            
+            with col2:
+                new_info = st.text_area("Загальна інформація про лейк")
+                new_changes = st.text_area("Внесення змін")
+            
+            if st.form_submit_button("➕ Додати запис"):
+                if new_lakehouse and new_folder and new_element:
+                    new_row = {
+                        'LakeHouse': new_lakehouse,
+                        'Folder': new_folder,
+                        'Element': new_element,
+                        'URL': new_url if new_url else '',
+                        'Загальна інформація про лейк': new_info if new_info else '',
+                        'Внесення змін': new_changes if new_changes else ''
+                    }
+                    
+                    # Додаємо новий рядок
+                    new_df = pd.concat([lakes_table, pd.DataFrame([new_row])], ignore_index=True)
+                    
+                    if save_data_to_excel(new_df, "LakeHouse.xlsx"):
+                        st.success("✅ Новий запис додано!")
+                        st.rerun()
+                else:
+                    st.error("❌ Заповніть обов'язкові поля: LakeHouse, Folder, Element")
+    else:
+        st.warning("⚠️ Немає даних для редагування. Спочатку завантажте Excel файл.")
+
+# ==================== КОНТАКТИ ТА РЕСУРСИ ====================
 elif section == "📞 Контакти та ресурси":
     st.header("📞 Контакти та ресурси")
     st.subheader("👥 Команда")
