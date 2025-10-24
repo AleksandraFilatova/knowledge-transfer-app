@@ -16,19 +16,12 @@ EXCEL_FILE_PATH = os.environ.get("KNOWLEDGE_TRANSFER_CONFIG_PATH", "LakeHouse.xl
 @st.cache_data(ttl=300)
 def load_lakes_and_reports(excel_path):
     """
-    Считывает список лейков и отчетов из excel-файла.
-    Підтримує різні структури Excel файлів та автоматично визначає доступні листи.
+    Завантажує дані з Excel файлу
     """
-    if not os.path.exists(excel_path):
-        st.warning(f"⚠️ Файл не знайдено: {excel_path}")
-        return [], [], None, None
-    
     try:
         xl = pd.ExcelFile(excel_path)
         available_sheets = xl.sheet_names
-        # st.info(f"📋 Доступні листи в Excel: {', '.join(available_sheets)}")
         
-        # Спробуємо знайти листи з лейками та звітами
         lakes_df = None
         reports_df = None
         
@@ -37,29 +30,24 @@ def load_lakes_and_reports(excel_path):
         for sheet_name in lake_sheet_names:
             if sheet_name in available_sheets:
                 lakes_df = pd.read_excel(xl, sheet_name)
-                # st.success(f"✅ Знайдено лист з лейками: '{sheet_name}'")
                 break
         
         # Якщо не знайшли спеціальний лист, спробуємо другий лист (якщо є)
         if lakes_df is None and len(available_sheets) > 1:
             lakes_df = pd.read_excel(xl, available_sheets[1])
-            # st.info(f"📋 Використовуємо другий лист: '{available_sheets[1]}'")
         elif lakes_df is None and available_sheets:
             lakes_df = pd.read_excel(xl, available_sheets[0])
-            # st.info(f"📋 Використовуємо перший лист: '{available_sheets[0]}'")
         
         # Шукаємо лист зі звітами
         report_sheet_names = ['Reports', 'reports', 'report', 'звіти', 'Power BI']
         for sheet_name in report_sheet_names:
             if sheet_name in available_sheets:
                 reports_df = pd.read_excel(xl, sheet_name)
-                # st.success(f"✅ Знайдено лист зі звітами: '{sheet_name}'")
                 break
         
         # Якщо не знайшли спеціальний лист, використаємо перший лист
         if reports_df is None and available_sheets:
             reports_df = pd.read_excel(xl, available_sheets[0])
-            # st.info(f"📋 Використовуємо перший лист для звітів: '{available_sheets[0]}'")
         
         # Витягуємо назви
         lakes_names = []
@@ -95,27 +83,33 @@ def load_lakes_and_reports(excel_path):
         
         return lakes_names, reports_names, lakes_df, reports_df
         
-    except Exception as ex:
-        st.error(f"⚠️ Не вдалося зчитати файл {excel_path}: {ex}")
-        st.error(f"Деталі помилки: {str(ex)}")
+    except Exception as e:
+        st.error(f"❌ Помилка при завантаженні файлу: {e}")
         return [], [], None, None
 
-# ======= Функції для аналізу та візуалізації лейків =========
-@st.cache_data(ttl=300)
 def analyze_lakes_data(lakes_df):
     """
     Аналізує дані лейків та повертає статистику
     """
     if lakes_df is None or lakes_df.empty:
-        return None
+        return {
+            'total_lakes': 0,
+            'columns': [],
+            'missing_data': {},
+            'unique_values': {}
+        }
     
     analysis = {
         'total_lakes': len(lakes_df),
         'columns': list(lakes_df.columns),
-        'data_types': lakes_df.dtypes.to_dict(),
-        'missing_data': lakes_df.isnull().sum().to_dict(),
+        'missing_data': {},
         'unique_values': {}
     }
+    
+    # Аналіз пропущених даних
+    for col in lakes_df.columns:
+        missing_count = lakes_df[col].isna().sum()
+        analysis['missing_data'][col] = missing_count
     
     # Аналіз унікальних значень для кожної колонки
     for col in lakes_df.columns:
@@ -195,45 +189,38 @@ def create_lakes_visualization(lakes_df):
     if lakes_df is None or lakes_df.empty:
         return None
     
-    visualizations = {}
+    # Створюємо візуалізації
+    charts = {}
     
-    # 1. Статус лейків (якщо є колонка status)
-    if 'status' in lakes_df.columns:
-        status_counts = lakes_df['status'].value_counts()
-        fig_status = px.pie(
-            values=status_counts.values, 
+    # 1. Кругова діаграма для статусу (якщо є колонка Status)
+    if 'Status' in lakes_df.columns:
+        status_counts = lakes_df['Status'].value_counts()
+        fig_pie = px.pie(
+            values=status_counts.values,
             names=status_counts.index,
-            title="📊 Розподіл статусів лейків",
-            color_discrete_sequence=px.colors.qualitative.Set3
+            title="Розподіл лейків за статусом"
         )
-        visualizations['status_pie'] = fig_status
+        charts['status_pie'] = fig_pie
     
-    # 2. Частота оновлень (якщо є колонка update_freq)
-    if 'update_freq' in lakes_df.columns:
-        freq_counts = lakes_df['update_freq'].value_counts()
-        fig_freq = px.bar(
-            x=freq_counts.index, 
-            y=freq_counts.values,
-            title="⏰ Частота оновлень лейків",
-            labels={'x': 'Частота оновлення', 'y': 'Кількість лейків'},
-            color=freq_counts.values,
-            color_continuous_scale='Blues'
+    # 2. Гістограма для частоти оновлень (якщо є колонка Update_Frequency)
+    if 'Update_Frequency' in lakes_df.columns:
+        fig_bar = px.bar(
+            x=lakes_df['Update_Frequency'].value_counts().index,
+            y=lakes_df['Update_Frequency'].value_counts().values,
+            title="Частота оновлень лейків"
         )
-        fig_freq.update_layout(xaxis_tickangle=-45)
-        visualizations['frequency_bar'] = fig_freq
+        charts['frequency_bar'] = fig_bar
     
-    # 3. Workspace розподіл (якщо є колонка workspace)
-    if 'workspace' in lakes_df.columns:
-        workspace_counts = lakes_df['workspace'].value_counts()
-        fig_workspace = px.treemap(
-            names=workspace_counts.index,
-            parents=[''] * len(workspace_counts),
-            values=workspace_counts.values,
-            title="🏢 Розподіл лейків по workspace"
+    # 3. Treemap для розподілу по робочих просторах (якщо є колонка Workspace)
+    if 'Workspace' in lakes_df.columns:
+        fig_treemap = px.treemap(
+            lakes_df,
+            path=['Workspace'],
+            title="Розподіл лейків по робочих просторах"
         )
-        visualizations['workspace_treemap'] = fig_workspace
+        charts['workspace_treemap'] = fig_treemap
     
-    return visualizations
+    return charts
 
 def create_lake_details_card(lake_row):
     """
@@ -242,11 +229,8 @@ def create_lake_details_card(lake_row):
     if lake_row is None or lake_row.empty:
         return "Немає даних про лейк"
     
-    # Визначаємо назву лейка
-    lake_name = lake_row.get('name', lake_row.get('Name', lake_row.get('назва', 'Невідомий лейк')))
-    
     # Створюємо HTML картку з інформацією
-    card_html = f"""
+    card_html = """
     <div style="
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 20px;
@@ -256,73 +240,33 @@ def create_lake_details_card(lake_row):
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     ">
         <h3 style="margin: 0 0 15px 0; color: white;">🏞️ {lake_name}</h3>
-    """
+    """.format(lake_name=lake_row.get('LakeHouse', 'Невідомий лейк'))
     
     # Додаємо інформацію з усіх доступних колонок
     for col in lake_row.index:
-        if pd.notna(lake_row[col]) and col.lower() not in ['name', 'назва']:
+        if pd.notna(lake_row[col]) and col not in ['LakeHouse', 'Folder', 'Element', 'Загальна інформація про лейк', 'Внесення змін']: # Виключаємо вже використані або спеціальні колонки
             value = lake_row[col]
-            # Перекладаємо назви колонок на українську для кращого розуміння
-            col_translations = {
-                'workspace': 'Робочий простір',
-                'update_freq': 'Частота оновлення',
-                'last_update': 'Останнє оновлення',
-                'status': 'Статус',
-                'owner': 'Власник',
-                'description': 'Опис',
-                'size': 'Розмір',
-                'location': 'Розташування',
-                'components': 'Компоненти',
-                'tables': 'Таблиці',
-                'views': 'Представлення'
-            }
-            
-            display_name = col_translations.get(col.lower(), col)
-            card_html += f"""
-            <div style="margin: 8px 0;">
-                <strong>{display_name}:</strong> {value}
-            </div>
-            """
+            # Перекладаємо назви колонок для відображення
+            display_col_name = {
+                'Type': 'Тип',
+                'Опис': 'Опис',
+                'Оновлення': 'Оновлення',
+                'Особливості': 'Особливості',
+            }.get(col, col) # Якщо немає перекладу, використовуємо оригінальну назву
+            card_html += f"<p style=\"margin: 5px 0;\"><strong>{display_col_name}:</strong> {value}</p>"
     
     card_html += "</div>"
     return card_html
 
-# ДЕМО-ФАЙЛ для генерації якщо його не існує (тільки перший запуск):
-def create_default_config_file(path):
-    lakes_df = pd.DataFrame({
-        "name": ["Sales_Lake", "Inventory_Lake", "HR_Lake", "Finance_Lake"],
-        "workspace": ["Sales_Analytics", "Inventory_Analytics", "HR_Analytics", "Finance_Analytics"],
-        "update_freq": ["Щодня 06:00", "Кожні 4 години", "Щодня 08:00", "Щотижня"],
-        "last_update": ["08.10.2025 06:15", "08.10.2025 12:00", "08.10.2025 08:10", "07.10.2025"],
-        "status": ["✅ OK", "✅ OK", "✅ OK", "⚠️ Затримка"]
-    })
-    reports_df = pd.DataFrame({
-        "name": ["Sales Dashboard", "Inventory Report", "HR Analytics", "Financial Overview"],
-        "workspace": ["Sales_Analytics", "Inventory_Analytics", "HR_Analytics", "Finance_Analytics"],
-        "owner": ["Маркетинг", "Логістика", "HR", "Фінанси"],
-        "update_freq": ["Щодня", "Щодня", "Щотижня", "Щомісяця"],
-        "lake": ["Sales_Lake", "Inventory_Lake", "HR_Lake", "Finance_Lake"],
-        "status": ["✅ OK", "✅ OK", "✅ OK", "⚠️ Потребує уваги"]
-    })
-    with pd.ExcelWriter(path) as writer:
-        lakes_df.to_excel(writer, index=False, sheet_name="lakes")
-        reports_df.to_excel(writer, index=False, sheet_name="reports")
-
-if not os.path.exists(EXCEL_FILE_PATH):
-    create_default_config_file(EXCEL_FILE_PATH)
-
-# ==== STREAMLIT UI ====
-
+# ==================== НАСТРОЙКИ СТОРІНКИ ====================
 st.set_page_config(
-    page_title="База знань - Інструкції по роботі",
-    page_icon="📚",
-    layout="wide"
+    page_title="Knowledge Transfer App",
+    page_icon="🧠",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-st.title("📚 База знань: Інструкції по оновленню звітів та лейків")
-st.markdown("*Документація для команди Data Engineering*")
-st.markdown("---")
-
+# ==================== НАВІГАЦІЯ ====================
 st.sidebar.title("🗂️ Навігація")
 st.sidebar.markdown("### Оберіть розділ:")
 
@@ -352,7 +296,7 @@ st.sidebar.code("http://192.168.1.105:8501")
 # === ДИНАМИЧЕСКИЙ ЗАПРОС таблицы Excel для Lakes & reports ===
 # Перевіряємо, чи файл існує локально
 if os.path.exists(EXCEL_FILE_PATH):
-lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
+    lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
 else:
     # Якщо файл не знайдено, пропонуємо завантажити
     st.warning("⚠️ Файл LakeHouse.xlsx не знайдено. Будь ласка, завантажте файл:")
@@ -389,38 +333,9 @@ if section == "🏠 Головна":
     """.format(EXCEL_FILE_PATH))
     col1, col2 = st.columns(2)
     with col1:
-        st.info("""
-        **💧 Data Lakes**
-        - Інструкції по оновленню
-        - Графік оновлень
-        - Список всіх лейків
-        - Troubleshooting
-        """)
-        st.success("""
-        **📊 Power BI Звіти**
-        - Покрокові інструкції
-        - Список звітів
-        - Власники звітів
-        - Часті помилки
-        """)
+        st.metric("🏞️ Data Lakes", len(lakes) if lakes else 0)
     with col2:
-        st.warning("""
-        **🔌 Підключення джерел**
-        - Connection strings
-        - Облікові записи
-        - Права доступу
-        - API endpoints
-        """)
-        st.error("""
-        **🆘 Що робити якщо...**
-        - Звіт не оновлюється
-        - Помилки підключення
-        - Проблеми з даними
-        - Екстрені контакти
-        """)
-    st.markdown("---")
-    st.markdown("### 🚀 Швидкий старт")
-    st.markdown("Оберіть розділ з меню зліва 👈")
+        st.metric("📊 Power BI звіти", len(reports) if reports else 0)
 
 # ==================== ОНОВЛЕННЯ DATA LAKES ====================
 elif section == "💧 Оновлення Data Lakes":
@@ -432,7 +347,7 @@ elif section == "💧 Оновлення Data Lakes":
     unique_lakes = []
     if lakes_table is not None and not lakes_table.empty:
         # Шукаємо колонку з назвами лейків
-        name_columns = ['LakeHouse', 'name', 'Name', 'назва', 'Назва', 'lake_name', 'Lake Name']
+        name_columns = ['LakeHouse', 'name', 'Name', 'назва', 'Назва', 'lake_name', 'Lake Name', 'Lakehouse']
         name_col = None
         for col in name_columns:
             if col in lakes_table.columns:
@@ -440,14 +355,12 @@ elif section == "💧 Оновлення Data Lakes":
                 break
         
         if name_col:
-            unique_lakes = lakes_table[name_col].dropna().unique().tolist()
+            unique_lakes = list(lakes_table[name_col].dropna().unique())
         else:
-            # Якщо не знайшли колонку з назвами, використаємо першу колонку
-            unique_lakes = lakes_table.iloc[:, 0].dropna().unique().tolist()
+            unique_lakes = list(lakes_table.iloc[:, 0].dropna().unique())
     
-    lake_select_options = ["Всі лейки", "📊 Аналітика та візуалізація"]
-    if unique_lakes:
-        lake_select_options += unique_lakes
+    # Додаємо опції для вибору
+    lake_select_options = ["Всі лейки"] + unique_lakes + ["📊 Аналітика та візуалізація"]
     
     lake_name = st.selectbox(
         "Оберіть Data Lake:",
@@ -507,43 +420,59 @@ elif section == "💧 Оновлення Data Lakes":
         st.subheader("📊 Аналітика та візуалізація лейків")
         
         if lakes_table is not None and not lakes_table.empty:
-            # Створюємо візуалізації
-            visualizations = create_lakes_visualization(lakes_table)
+            # Показуємо аналіз даних
+            analysis = analyze_lakes_data(lakes_table)
             
-            if visualizations:
-                # Показуємо графіки в колонках
-                if 'status_pie' in visualizations:
-                    st.plotly_chart(visualizations['status_pie'], use_container_width=True)
+            # Показуємо загальну статистику
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("🏞️ Всього лейків", analysis['total_lakes'])
+            with col2:
+                st.metric("📊 Колонок даних", len(analysis['columns']))
+            with col3:
+                missing_total = sum(analysis['missing_data'].values())
+                st.metric("⚠️ Пропущених значень", missing_total)
+            with col4:
+                st.metric("📅 Останнє оновлення", datetime.now().strftime('%d.%m'))
+            
+            # Створюємо візуалізації
+            charts = create_lakes_visualization(lakes_table)
+            
+            if charts:
+                st.subheader("📈 Візуалізації")
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    if 'frequency_bar' in visualizations:
-                        st.plotly_chart(visualizations['frequency_bar'], use_container_width=True)
-                with col2:
-                    if 'workspace_treemap' in visualizations:
-                        st.plotly_chart(visualizations['workspace_treemap'], use_container_width=True)
-                
-                # Додаємо детальний аналіз
-                st.subheader("🔍 Детальний аналіз")
-                analysis = analyze_lakes_data(lakes_table)
-                
-                with st.expander("📈 Статистика по колонках"):
-                    for col in analysis['columns']:
-                        missing_count = analysis['missing_data'][col]
-                        total_count = analysis['total_lakes']
-                        completeness = ((total_count - missing_count) / total_count) * 100
-                        
-                        st.write(f"**{col}:** {completeness:.1f}% заповнено ({total_count - missing_count}/{total_count})")
-                
-                with st.expander("📊 Унікальні значення"):
-                    for col, values in analysis['unique_values'].items():
+                # Показуємо доступні діаграми
+                for chart_name, chart in charts.items():
+                    if chart_name == 'status_pie':
+                        st.plotly_chart(chart, use_container_width=True)
+                    elif chart_name == 'frequency_bar':
+                        st.plotly_chart(chart, use_container_width=True)
+                    elif chart_name == 'workspace_treemap':
+                        st.plotly_chart(chart, use_container_width=True)
+            
+            # Детальний аналіз
+            st.subheader("🔍 Детальний аналіз")
+            
+            # Аналіз пропущених даних
+            if any(analysis['missing_data'].values()):
+                st.subheader("⚠️ Пропущені дані")
+                missing_df = pd.DataFrame(list(analysis['missing_data'].items()), columns=['Колонка', 'Пропущено'])
+                missing_df = missing_df[missing_df['Пропущено'] > 0]
+                if not missing_df.empty:
+                    st.dataframe(missing_df, use_container_width=True)
+                else:
+                    st.success("✅ Пропущених даних немає!")
+            
+            # Аналіз унікальних значень
+            if analysis['unique_values']:
+                st.subheader("📊 Унікальні значення")
+                for col, values in analysis['unique_values'].items():
+                    if values:
                         st.write(f"**{col}:**")
-                        for value, count in values.items():
-                            st.write(f"  - {value}: {count}")
-            else:
-                st.info("Недостатньо даних для створення візуалізацій")
+                        values_df = pd.DataFrame(list(values.items()), columns=['Значення', 'Кількість'])
+                        st.dataframe(values_df, use_container_width=True)
         else:
-            st.warning("Немає даних для аналізу")
+            st.warning("Немає даних для аналізу!")
     
     else:
         # Детальна інструкція для конкретного lake
@@ -567,7 +496,7 @@ elif section == "💧 Оновлення Data Lakes":
                 unique_lakes = []
                 for col in name_columns:
                     if col in lakes_table.columns:
-                        unique_lakes = lakes_table[col].dropna().unique().tolist()
+                        unique_lakes = list(lakes_table[col].dropna().unique())
                         if len(unique_lakes) == 1:
                             lake_data = lakes_table
                             st.info(f"💡 Використовуємо єдиний лейк: {unique_lakes[0]}")
@@ -601,23 +530,22 @@ elif section == "💧 Оновлення Data Lakes":
                 if 'Folder' in lake_data.columns:
                     st.subheader("📁 Структура лейка")
                     
-                    # Показуємо тільки унікальні папки
-                    unique_folders = lake_data['Folder'].dropna().unique().tolist()
+                    # Отримуємо унікальні папки
+                    unique_folders = lake_data['Folder'].dropna().unique()
                     
-                    if unique_folders:
+                    if len(unique_folders) > 0:
                         st.write("**Доступні папки:**")
                         
-                        # Створюємо клікабельні кнопки для папок
-                        cols = st.columns(min(len(unique_folders), 3))  # Максимум 3 колонки
+                        # Створюємо кнопки для папок в колонках
+                        cols = st.columns(min(3, len(unique_folders)))
                         selected_folder = None
                         
                         for i, folder in enumerate(unique_folders):
-                            col_idx = i % 3
-                            with cols[col_idx]:
-                                if st.button(f"📂 {folder}", key=f"folder_{folder}", use_container_width=True):
+                            with cols[i % 3]:
+                                if st.button(f"📂 {folder}", key=f"folder_{i}"):
                                     selected_folder = folder
                         
-                        # Показуємо деталі вибраної папки
+                        # Показуємо елементи вибраної папки
                         if selected_folder:
                             st.success(f"📂 Вибрано папку: **{selected_folder}**")
                             
@@ -628,7 +556,7 @@ elif section == "💧 Оновлення Data Lakes":
                             st.subheader("🧩 Елементи папки")
                             
                             # Вибираємо стовпці з 3 по 8 (індекси 2-7), але виключаємо URL
-                            display_columns = folder_data.columns[2:9]
+                            display_columns = folder_data.columns[2:8]
                             # Виключаємо колонку URL з відображення, якщо вона є
                             if 'URL' in display_columns:
                                 display_columns = [col for col in display_columns if col != 'URL']
@@ -700,235 +628,12 @@ elif section == "💧 Оновлення Data Lakes":
                 
                 # Показуємо доступні лейки для довідки
                 if unique_lakes:
-                    st.subheader("📋 Доступні лейки:")
+                    st.write("**Доступні лейки:**")
                     for lake in unique_lakes:
-                        st.write(f"• {lake}")
-                else:
-                    st.warning("⚠️ Немає доступних лейків в базі даних")
+                        st.write(f"- {lake}")
         else:
-            st.warning("⚠️ Немає даних про лейки")
+            st.warning("⚠️ Дані лейків не завантажені. Перевірте файл Excel.")
 
-# ==================== ОНОВЛЕННЯ POWER BI ====================
-elif section == "📊 Оновлення Power BI звітів":
-    st.header("📊 Інструкції по оновленню Power BI звітів")
-    report_select_options = ["Всі звіти"]
-    if reports:
-        report_select_options += reports
-    report_name = st.selectbox(
-        "Оберіть звіт:",
-        report_select_options
-    )
-    if report_name == "Всі звіти":
-        st.info("👈 Оберіть конкретний звіт зі списку вище")
-        st.subheader("📋 Список всіх звітів")
-        if reports_table is not None and not reports_table.empty:
-            st.dataframe(reports_table, use_container_width=True)
-        else:
-            st.warning("Список звітів порожній у файлі Excel!")
-    else:
-        # Підтягнути максимум detail по звіту з Excel
-        if reports_table is not None and report_name in reports_table["name"].values:
-            r_row = reports_table[reports_table["name"] == report_name].iloc[0]
-            info_md = f"""
-            **Назва звіту:** {r_row['name']}  
-            **Workspace:** {r_row.get('workspace','')}  
-            **Власник:** {r_row.get('owner','')}  
-            **Частота оновлення:** {r_row.get('update_freq','')}  
-            **Джерело даних (лейк):** {r_row.get('lake', '')}
-            **Статус:** {r_row.get('status', '')}  
-            """
-        else:
-            info_md = f"**Назва звіту:** {report_name}"
-        st.success(f"Інструкція для: **{report_name}**")
-        with st.expander("ℹ️ Інформація про звіт", expanded=True):
-            st.markdown(info_md)
-        st.subheader("📝 Як оновити звіт")
-        with st.expander("Крок 1️⃣: Перевірка даних в Lakehouse", expanded=True):
-            st.markdown("""
-            Перевірте, що дані в пов'язаному Lakehouse актуальні, перед оновленням звіту.
-            """)
-            st.checkbox("✓ Дані в Lake актуальні", key=f"{report_name}_lake_data")
-        with st.expander("Крок 2️⃣: Оновлення Dataset в Power BI Service"):
-            st.markdown("""
-            Оновіть dataset у Power BI — вручну або через plan/schedule.
-            """)
-            st.checkbox("✓ Dataset оновлено", key=f"{report_name}_pbirefresh")
-        with st.expander("Крок 3️⃣: Перевірка звіту"):
-            st.markdown("""
-            Перевірте головні сторінки, фільтри, дати та візуали на коректність.
-            """)
-            st.checkbox("✓ Звіт працює коректно", key=f"{report_name}_ok")
-        st.success("✅ Готово! Якщо всі чекбокси відмічені - звіт оновлено успішно")
-
-# ==================== ПІДКЛЮЧЕННЯ ДЖЕРЕЛ ====================
-elif section == "🔌 Підключення джерел":
-    st.header("🔌 Підключення джерел даних")
-    st.warning("⚠️ **ВАЖЛИВО:** Всі паролі зберігаються в Azure Key Vault. Ніколи не записуйте їх у відкритому вигляді!")
-    source_type = st.selectbox(
-        "Оберіть тип джерела:",
-        ["Всі джерела", "SQL Server", "OData (1С)", "REST API", "SharePoint", "Excel файли"]
-    )
-    if source_type == "SQL Server":
-        st.subheader("🗄️ SQL Server підключення")
-        with st.expander("📍 Production SQL Server", expanded=True):
-            st.markdown("""
-            ### Connection String:
-            ```
-            Server=sql-prod-server.database.windows.net;
-            Database=Production_DB;
-            Authentication=Active Directory Integrated;
-            ```
-            ### Облікові дані:
-            - **Username:** Зберігається в Key Vault (`sql-prod-username`)
-            - **Password:** Зберігається в Key Vault (`sql-prod-password`)
-            ### Як підключитися з Fabric:
-            1. Data Factory → New Connection
-            2. Оберіть "SQL Server"
-            3. Введіть server name
-            4. Authentication method: SQL Authentication
-            5. Використайте credentials з Key Vault
-            ### Таблиці:
-            - `dbo.Sales` - дані продажів
-            - `dbo.Customers` - клієнти
-            - `dbo.Products` - продукти
-            ### Відповідальний: Петров П.П.
-            ### 📞 Контакт: petrov@company.com
-            """)
-    elif source_type == "OData (1С)":
-        st.subheader("🔗 OData підключення до 1С")
-        with st.expander("📍 1С Production OData", expanded=True):
-            st.markdown("""
-            ### Endpoint URL:
-            ```
-            https://1c-server.company.local/production/odata/standard.odata/
-            ```
-            ### Автентифікація:
-            - **Тип:** Basic Authentication
-            - **Username:** Зберігається в Key Vault (`1c-odata-username`)
-            - **Password:** Зберігається в Key Vault (`1c-odata-password`)
-            
-            ### Як підключитися з Fabric:
-            1. Створіть новий Data Source
-            2. Оберіть "OData"
-            3. Введіть URL endpoint
-            4. Оберіть Basic Authentication
-            5. Введіть credentials
-
-            ### Доступні ендпоінти:
-            - `Catalog_Номенклатура` - довідник номенклатури
-            - `Document_РеалізаціяТоварівТаПослуг` - документи продажів
-            - `InformationRegister_ЗалишкиТоварів` - залишки товарів
-            
-            ### ⚠️ Обмеження:
-            - Максимум 1000 записів за запит (використовуйте $top і $skip)
-            - Rate limit: 100 запитів на хвилину
-            
-            ### 💡 Приклад запиту:
-            ```
-            GET /Catalog_Номенклатура?$top=100&$select=Code,Description
-            ```
-            ### Відповідальний: Сидоров С.С.
-            ### 📞 Контакт: sidorov@company.com
-            """)
-    else:
-        st.info("Оберіть тип джерела зі списку вище, щоб побачити детальну інформацію")
-
-# ==================== TROUBLESHOOTING ====================
-elif section == "🆘 Troubleshooting":
-    st.header("🆘 Вирішення проблем")
-    st.markdown("Тут зібрані найчастіші проблеми та їх рішення")
-    problem = st.selectbox(
-        "Оберіть проблему:",
-        [
-            "Оберіть проблему...",
-            "Pipeline падає з помилкою",
-            "Дані не оновлюються",
-            "Помилка підключення до джерела",
-            "Power BI звіт показує старі дані",
-            "Повільне оновлення",
-            "Помилки автентифікації"
-        ]
-    )
-    if problem == "Pipeline падає з помилкою":
-        st.error("### ❌ Pipeline падає з помилкою")
-        with st.expander("💡 Рішення 1: Перевірте логи", expanded=True):
-            st.markdown("""
-            ### Як подивитися логи:
-            1. Відкрийте Fabric
-            2. Знайдіть ваш pipeline
-            3. Відкрийте історію запусків (Run history)
-            4. Клікніть на проблемний запуск
-            5. Перегляньте детальні логи
-            
-            ### Що шукати в логах:
-            - 🔴 **"Timeout"** → джерело не відповідає, перевірте доступність
-            - 🔴 **"Authentication failed"** → проблема з credentials
-            - 🔴 **"Permission denied"** → немає прав доступу
-            - 🔴 **"Schema mismatch"** → структура даних змінилася
-            """)
-        with st.expander("💡 Рішення 2: Перезапустіть pipeline"):
-            st.markdown("""
-            ### Кроки:
-            1. Дочекайтеся завершення поточного запуску (навіть якщо він з помилкою)
-            2. Натисніть "Run again"
-            3. Якщо проблема повторюється - дивіться інші рішення
-            """)
-        with st.expander("💡 Рішення 3: Перевірте джерело даних"):
-            st.markdown("""
-            ### Як перевірити:
-            1. Спробуйте підключитися до джерела вручну
-            2. Виконайте простий запит
-            3. Перевірте, чи доступний сервер
-            
-            ### Інструменти для перевірки:
-            - SQL Server: SQL Server Management Studio
-            - OData: браузер або Postman
-            - API: Postman або curl
-            """)
-    elif problem == "Дані не оновлюються":
-        st.error("### ⚠️ Дані не оновлюються")
-        st.markdown("""
-        ### Чеклист перевірки:
-        """)
-        check1 = st.checkbox("✓ Pipeline виконався успішно (без помилок)")
-        check2 = st.checkbox("✓ В джерелі є нові дані")
-        check3 = st.checkbox("✓ Dataset в Power BI оновлено після pipeline")
-        check4 = st.checkbox("✓ Перевірив фільтри в звіті (можливо, відфільтровані нові дані)")
-        check5 = st.checkbox("✓ Очистив кеш браузера")
-        if all([check1, check2, check3, check4, check5]):
-            st.success("Якщо всі пункти виконані, але дані все одно старі - зверніться до IT Support")
-    elif problem == "Помилка підключення до джерела":
-        st.error("### 🔌 Помилка підключення до джерела")
-        st.markdown("""
-        ### Можливі причини:
-        1. **Неправильні credentials**
-           - Перевірте Key Vault
-           - Перевірте, чи не закінчився термін дії паролю
-        2. **Джерело недоступне**
-           - Перевірте, чи працює сервер
-           - Можливо, проводяться технічні роботи
-           - Перевірте firewall rules
-        3. **Мережеві проблеми**
-           - Перевірте VPN підключення
-           - Перевірте, чи IP Fabric додано до whitelist
-        4. **Закінчилися ліміти**
-           - Можливо, перевищено ліміт запитів до API
-           - Зачекайте 15-30 хвилин та спробуйте знову
-        """)
-    else:
-        st.info("Оберіть проблему зі списку вище, щоб побачити рішення")
-    st.markdown("---")
-    st.warning("""
-    ### 🆘 Якщо нічого не допомогло:
-    1. **Зателефонуйте до IT Support:** +380 XX XXX-XX-XX
-    2. **Напишіть в Teams:** канал #data-engineering-support
-    3. **Email:** support@company.com
-    ### ❗ Екстрені ситуації (звіти для керівництва не працюють):
-    - Телефон технічного директора: +380 XX XXX-XX-XX
-    - Telegram: @tech_director
-    """)
-
-# ==================== КОНТАКТИ ====================
 # ==================== РЕДАГУВАННЯ ДАНИХ ====================
 elif section == "✏️ Редагування даних":
     st.header("✏️ Редагування даних")
@@ -1013,83 +718,42 @@ elif section == "📞 Контакти та ресурси":
     with col1:
         st.markdown("""
         ### Data Engineering Team
-
-        **Іванов Іван Іванович**  
-        Data Engineer (Lake/Pipeline)  
-        📧 ivanov@company.com  
-        📱 +380 XX XXX-XX-XX  
-        💬 Teams: @ivanov
-
-        ---
-
-        **Петров Петро Петрович**  
-        Data Engineer (Power BI)  
-        📧 petrov@company.com  
-        📱 +380 XX XXX-XX-XX  
-        💬 Teams: @petrov
+        - **Керівник команди:** Олександра Філатова
+        - **Email:** oleksandra.filatova@darnitsa.com
+        - **Телефон:** +380 XX XXX-XX-XX
+        - **Telegram:** @oleksandra_filatova
         """)
     with col2:
         st.markdown("""
-        ### IT Support
-
-        **Сидоров Сергій Сергійович**  
-        System Administrator  
-        📧 sidorov@company.com  
-        📱 +380 XX XXX-XX-XX  
-        💬 Teams: @sidorov
-
-        ---
-
-        **IT Support загальний**  
-        📧 support@company.com  
-        📱 +380 XX XXX-XX-XX (гаряча лінія)  
-        🕐 Пн-Пт: 9:00-18:00
+        ### Power BI Team
+        - **Керівник команди:** [Ім'я]
+        - **Email:** [email]
+        - **Телефон:** +380 XX XXX-XX-XX
+        - **Telegram:** @[username]
         """)
-    st.markdown("---")
+    
     st.subheader("🔗 Корисні посилання")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("""
+        ### Внутрішні ресурси:
+        - [SharePoint команди](https://darnitsa.sharepoint.com)
+        - [Azure DevOps](https://dev.azure.com/darnitsa)
+        - [Power BI Service](https://app.powerbi.com)
+        """)
+    with col2:
+        st.markdown("""
+        ### Зовнішні ресурси:
+        - [Microsoft Learn](https://learn.microsoft.com)
+        - [Power BI Community](https://community.powerbi.com)
+        - [Streamlit Docs](https://docs.streamlit.io)
+        """)
+    
+    st.subheader("🆘 Екстрені контакти")
     st.markdown("""
-    ### Робочі системи:
-    - 🌐 [Microsoft Fabric Portal](https://fabric.microsoft.com)
-    - 📊 [Power BI Service](https://app.powerbi.com)
-    - 🔐 [Azure Key Vault](https://portal.azure.com)
-    - 📂 [SharePoint - Документація](https://company.sharepoint.com/documentation)
-    
-    ### Документація:
-    - 📚 [Microsoft Fabric Docs](https://learn.microsoft.com/fabric/)
-    - 📚 [Power BI Docs](https://learn.microsoft.com/power-bi/)
-    - 📚 [Внутрішня Wiki](https://wiki.company.local)
-    
-    ### Для навчання:
-    - 🎓 [Microsoft Learn - Fabric](https://learn.microsoft.com/training/fabric/)
-    - 🎓 [Power BI Training](https://learn.microsoft.com/training/powerplatform/power-bi)
-    - 🎥 [Відео уроки (внутрішні)](https://company.sharepoint.com/videos)
+    **Для критичних проблем:**
+    - Телефон технічного директора: +380 XX XXX-XX-XX
+    - Telegram: @tech_director
     """)
-    st.markdown("---")
-    st.subheader("📝 Шаблони та скрипти")
-    with st.expander("💾 Шаблон connection string для SQL"):
-        st.code("""
-Server=YOUR_SERVER.database.windows.net;
-Database=YOUR_DATABASE;
-Authentication=Active Directory Integrated;
-        """, language="text")
-    with st.expander("💾 Шаблон запиту до OData"):
-        st.code("""
-GET https://your-endpoint/EntityName?$top=100&$skip=0&$select=Field1,Field2&$filter=Date gt 2025-01-01
-        """, language="text")
-    with st.expander("💾 Скрипт перевірки даних в Lake"):
-        st.code("""
-SELECT 
-    COUNT(*) as total_records,
-    MAX(LoadDate) as last_load_date,
-    MIN(LoadDate) as first_load_date,
-    COUNT(DISTINCT CustomerID) as unique_customers
-FROM Sales_Lake.FactSales
-WHERE LoadDate >= DATEADD(day, -7, GETDATE())
-        """, language="sql")
 
-st.markdown("---")
-st.markdown("""
-<div style='text-align: center; color: gray;'>
-    📚 База знань Data Engineering Team | Версія 1.0 | Жовтень 2025
-</div>
-""", unsafe_allow_html=True)
+# ==================== КОНТАКТИ ====================
