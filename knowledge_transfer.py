@@ -297,14 +297,6 @@ section = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.info(f"📅 Останнє оновлення:\n{datetime.now().strftime('%d.%m.%Y')}")
 
-# Додаємо інформацію про доступ для колег
-st.sidebar.markdown("---")
-st.sidebar.markdown("🌐 **Доступ для колег:**")
-st.sidebar.markdown("Для доступу з інших комп'ютерів:")
-st.sidebar.markdown("1. Запустіть з командою:")
-st.sidebar.code("streamlit run \"C:\\Users\\oleksandra.filatova\\OneDrive - PHARMACEUTICAL COMPANY DARNYTSIA\\Блокноти\\Streamlit\\knowledge_transfer.py\" --server.address 192.168.1.105")
-st.sidebar.markdown("2. Дайте колегам посилання:")
-st.sidebar.code("http://192.168.1.105:8501")
 
 # === ДИНАМИЧЕСКИЙ ЗАПРОС таблицы Excel для Lakes & reports ===
 # Перевіряємо, чи файл існує локально
