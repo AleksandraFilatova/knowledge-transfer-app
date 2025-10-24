@@ -656,11 +656,11 @@ elif section == "✏️ Редагування даних":
         )
         
         # Автоматичне збереження при змінах
-                if not edited_df.equals(lakes_table):
-                    if save_data_to_excel(edited_df, "LakeHouse.xlsx"):
-                        st.success("✅ Зміни збережено локально!")
-                        st.info("💡 **Важливо:** Для синхронізації з Streamlit Cloud завантаж файл `LakeHouse.xlsx` в GitHub репозиторій")
-                        st.rerun()
+        if not edited_df.equals(lakes_table):
+            if save_data_to_excel(edited_df, "LakeHouse.xlsx"):
+                st.success("✅ Зміни збережено локально!")
+                st.info("💡 **Важливо:** Для синхронізації з Streamlit Cloud завантаж файл `LakeHouse.xlsx` в GitHub репозиторій")
+                st.rerun()
         
         # Кнопки для додаткових дій
         col1, col2 = st.columns(2)
