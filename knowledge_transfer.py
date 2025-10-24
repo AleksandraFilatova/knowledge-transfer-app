@@ -120,10 +120,13 @@ def analyze_lakes_data(lakes_df):
 
 def display_image_from_path(image_path, caption=None, width=None):
     """
-    Відображає зображення з файлового шляху
+    Відображає зображення з файлового шляху або URL
     """
     try:
-        if os.path.exists(image_path):
+        # Перевіряємо, чи це URL
+        if image_path.startswith(('http://', 'https://')):
+            st.image(image_path, caption=caption, width=width)
+        elif os.path.exists(image_path):
             image = Image.open(image_path)
             st.image(image, caption=caption, width=width)
         else:
@@ -166,7 +169,13 @@ def process_text_with_images(text):
                     st.markdown(part)
             else:  # Шлях до зображення
                 image_path = part.strip()
-                display_image_from_path(image_path, width=600)
+                # Перевіряємо, чи це локальний шлях, і замінюємо на GitHub URL
+                if image_path.startswith('C:\\') and 'PL-notebook.png' in image_path:
+                    # Замінюємо локальний шлях на GitHub URL
+                    github_url = "https://raw.githubusercontent.com/AleksandraFilatova/knowledge-transfer-app/main/Image/Sac-notebook.PNG"
+                    display_image_from_path(github_url, width=600)
+                else:
+                    display_image_from_path(image_path, width=600)
     else:
         # Якщо немає зображень, просто показуємо текст
         st.markdown(text)
