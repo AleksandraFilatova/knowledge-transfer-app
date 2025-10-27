@@ -420,8 +420,9 @@ section = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.info(f"📅 Останнє оновлення:\n{datetime.now().strftime('%d.%m.%Y')}")
 
-# Кнопка для відновлення файлу з GitHub
-if st.sidebar.button("🔄 Відновити файл"):
+# Кнопка для відновлення файлу або створення нового
+st.sidebar.markdown("### 🔧 Управління файлом")
+if st.sidebar.button("🆕 Створити новий файл (очистити всі дані)"):
     try:
         # Видаляємо пошкоджений файл
         if os.path.exists(EXCEL_FILE_PATH):
@@ -431,21 +432,14 @@ if st.sidebar.button("🔄 Відновити файл"):
             except:
                 st.sidebar.warning("⚠️ Не вдалося видалити файл")
         
-        # Завантажуємо з GitHub
-        st.sidebar.info("🔄 Завантажую з GitHub...")
-        if download_file_from_github(GITHUB_RAW_URL, EXCEL_FILE_PATH):
-            st.sidebar.success("✅ Файл відновлено з GitHub!")
+        # Створюємо новий файл
+        st.sidebar.info("📝 Створюю новий файл...")
+        if create_default_excel_file(EXCEL_FILE_PATH):
+            st.sidebar.success("✅ Створено новий файл! Тепер можна додавати дані.")
             st.cache_data.clear()
             st.rerun()
         else:
-            # Якщо GitHub не спрацював, створюємо новий файл
-            st.sidebar.info("📝 Створюю новий файл...")
-            if create_default_excel_file(EXCEL_FILE_PATH):
-                st.sidebar.success("✅ Створено новий файл!")
-                st.cache_data.clear()
-                st.rerun()
-            else:
-                st.sidebar.error("❌ Не вдалося створити файл")
+            st.sidebar.error("❌ Не вдалося створити файл")
     except Exception as e:
         st.sidebar.error(f"❌ Помилка: {e}")
 
