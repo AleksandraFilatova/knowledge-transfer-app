@@ -372,8 +372,23 @@ def save_to_google_sheets(df, reports_table=None):
             # Підготовлюємо дані для запису
             data_to_write = [df.columns.values.tolist()] + df.values.tolist()
             
-            # Використовуємо простіший метод update_range замість clear+update
-            worksheet.update('A1', data_to_write)
+            # Спробуємо різні методи запису
+            try:
+                # Метод 1: batch_update з діапазоном
+                worksheet.batch_update([{
+                    'range': f'A1:{chr(64 + len(df.columns))}{len(data_to_write)}',
+                    'values': data_to_write
+                }], value_input_option='RAW')
+            except Exception as e1:
+                st.warning(f"Метод 1 не спрацював: {e1}")
+                try:
+                    # Метод 2: простий update
+                    worksheet.update('A1', data_to_write)
+                except Exception as e2:
+                    st.warning(f"Метод 2 не спрацював: {e2}")
+                    # Метод 3: append_rows
+                    worksheet.clear()
+                    worksheet.append_rows(data_to_write)
             
             # Оновлюємо лист Reports, якщо є дані
             if reports_table is not None and not reports_table.empty:
@@ -383,7 +398,21 @@ def save_to_google_sheets(df, reports_table=None):
                     reports_worksheet = sh.add_worksheet(title="Reports", rows=1000, cols=20)
                 
                 reports_data = [reports_table.columns.values.tolist()] + reports_table.values.tolist()
-                reports_worksheet.update('A1', reports_data)
+                
+                # Спробуємо різні методи запису для Reports
+                try:
+                    reports_worksheet.batch_update([{
+                        'range': f'A1:{chr(64 + len(reports_table.columns))}{len(reports_data)}',
+                        'values': reports_data
+                    }], value_input_option='RAW')
+                except Exception as e1:
+                    st.warning(f"Reports метод 1 не спрацював: {e1}")
+                    try:
+                        reports_worksheet.update('A1', reports_data)
+                    except Exception as e2:
+                        st.warning(f"Reports метод 2 не спрацював: {e2}")
+                        reports_worksheet.clear()
+                        reports_worksheet.append_rows(reports_data)
             
             st.success("✅ Дані успішно збережено в Google Sheets!")
             return True
