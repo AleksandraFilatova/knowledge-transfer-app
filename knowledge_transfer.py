@@ -18,11 +18,15 @@ except ImportError:
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 EXCEL_FILE_PATH = os.path.join(SCRIPT_DIR, "LakeHouse.xlsx")
 
-# GitHub URL для файлу (raw формат)
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/AleksandraFilatova/knowledge-transfer-app/main/LakeHouse.xlsx"
+# Google Sheets ID
+GOOGLE_SHEETS_ID = "1khEZV_BX5NALD-BEAT36L0h_3ulBHczb"
+# URL для експорту з Google Sheets (CSV формат для Lakes)
+GOOGLE_SHEETS_URL_LAKES = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_ID}/gviz/tq?tqx=out:csv&sheet=Lakes"
+# URL для експорту з Google Sheets (CSV формат для Reports)
+GOOGLE_SHEETS_URL_REPORTS = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_ID}/gviz/tq?tExcellent:csv&sheet=Reports"
 
-# OneDrive URL як резервне джерело
-ONEDRIVE_URL = "https://pfdarnitsa-my.sharepoint.com/personal/analytics_darnitsa_ua/Documents/%D0%91%D0%BB%D0%BE%D0%BA%D0%BD%D0%BE%D1%82%D0%B8/Streamlit/LakeHouse.xlsx"
+# GitHub URL для файлу (raw формат) - резервне джерело
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/AleksandraFilatova/knowledge-transfer-app/main/LakeHouse.xlsx"
 
 # ======= Функція для читання інформації з Excel =========
 @st.cache_data(ttl=300)
