@@ -18,8 +18,9 @@ try:
     import gspread
     from google.oauth2.service_account import Credentials
     GOOGLE_SHEETS_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     GOOGLE_SHEETS_AVAILABLE = False
+    IMPORT_ERROR = str(e)
     # Не виводимо повідомлення тут, тому що Streamlit ще не ініціалізований
 
 # ==== CONFIG SECTION ====
@@ -305,6 +306,8 @@ def save_to_google_sheets(df, reports_table=None):
     try:
         if not GOOGLE_SHEETS_AVAILABLE:
             st.warning("⚠️ Бібліотека gspread не встановлена")
+            st.error(f"Помилка імпорту: {IMPORT_ERROR if 'IMPORT_ERROR' in globals() else 'Невідома помилка'}")
+            st.info("💡 Спробуйте встановити: pip install gspread google-auth")
             return False
         
         st.info("🔄 Спроба збереження в Google Sheets...")
