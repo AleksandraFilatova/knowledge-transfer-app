@@ -13,6 +13,14 @@ try:
 except ImportError:
     openpyxl = None
 
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+    GOOGLE_SHEETS_AVAILABLE = True
+except ImportError:
+    GOOGLE_SHEETS_AVAILABLE = False
+    st.info("💡 Для запису в Google Sheets встановіть: `pip install gspread google-auth`")
+
 # ==== CONFIG SECTION ====
 # Путь к Excel с лейками и звітами. Використовуємо абсолютний шлях до папки з кодом
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -309,9 +317,13 @@ def download_file_from_github(url, local_path):
 def save_data_to_excel(df, filename, lakes_table=None, reports_table=None):
     """
     Зберігає DataFrame в Excel файл з підтримкою множинних листів
+    
+    ⚠️ УВАГА: Дані зчитуються з Google Sheets, але зберігаються локально.
+    Після збереження потрібно вручну завантажити оновлений файл в Google Sheets.
     """
     try:
-        st.info(f"🔄 Намагаюся зберегти файл: {filename}")
+        st.info(f"🔄 Намагаюся зберегти локально: {filename}")
+        st.warning("⚠️ **Важливо:** Ці зміни зберігаються локально. Для синхронізації з Google Sheets завантажте оновлений файл вручну.")
         
         # Відкриваємо існуючий файл, якщо він є
         if os.path.exists(filename):
