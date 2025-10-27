@@ -22,9 +22,11 @@ except ImportError:
     st.info("💡 Для запису в Google Sheets встановіть: `pip install gspread google-auth`")
 
 # ==== CONFIG SECTION ====
-# Путь к Excel с лейками и звітами. Використовуємо абсолютний шлях до папки з кодом
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-EXCEL_FILE_PATH = os.path.join(SCRIPT_DIR, "LakeHouse.xlsx")
+# Використовуємо локальну папку поза OneDrive для збереження даних
+LOCAL_DATA_DIR = os.path.join(os.path.expanduser("~"), "AppData", "Local", "StreamlitData")
+if not os.path.exists(LOCAL_DATA_DIR):
+    os.makedirs(LOCAL_DATA_DIR)
+EXCEL_FILE_PATH = os.path.join(LOCAL_DATA_DIR, "LakeHouse.xlsx")
 
 # Google Sheets ID
 GOOGLE_SHEETS_ID = "1khEZV_BX5NALD-BEAT36L0h_3ulBHczb"
@@ -314,16 +316,25 @@ def download_file_from_github(url, local_path):
     except Exception as e:
         return False
 
+def save_to_google_sheets(df, reports_table=None):
+    """
+    Зберігає дані в Google Sheets (для публічного файлу без авторизації - не працює)
+    """
+    try:
+        st.info("🔄 Зберігаю в Google Sheets...")
+        st.warning("⚠️ Автоматичне збереження в Google Sheets потребує налаштування авторизації.")
+        st.info("💡 Зміни збережені локально. Оновіть Google Sheets вручну.")
+        return False
+    except Exception as e:
+        st.error(f"❌ Помилка збереження в Google Sheets: {e}")
+        return False
+
 def save_data_to_excel(df, filename, lakes_table=None, reports_table=None):
     """
     Зберігає DataFrame в Excel файл з підтримкою множинних листів
-    
-    ⚠️ УВАГА: Дані зчитуються з Google Sheets, але зберігаються локально.
-    Після збереження потрібно вручну завантажити оновлений файл в Google Sheets.
     """
     try:
         st.info(f"🔄 Намагаюся зберегти локально: {filename}")
-        st.warning("⚠️ **Важливо:** Ці зміни зберігаються локально. Для синхронізації з Google Sheets завантажте оновлений файл вручну.")
         
         # Відкриваємо існуючий файл, якщо він є
         if os.path.exists(filename):
