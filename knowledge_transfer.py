@@ -218,6 +218,32 @@ def download_file_from_onedrive(url, local_path):
         st.error(f"❌ Помилка завантаження з OneDrive: {e}")
         return False
 
+def create_default_excel_file(local_path):
+    """
+    Створює новий Excel файл з базовою структурою
+    """
+    try:
+        # Створюємо базову структуру
+        default_data = {
+            'LakeHouse': [],
+            'Folder': [],
+            'Element': [],
+            'URL': [],
+            'Загальна інформація про лейк': [],
+            'Внесення змін': []
+        }
+        df = pd.DataFrame(default_data)
+        
+        # Зберігаємо в Excel з двома листами
+        with pd.ExcelWriter(local_path, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Lakes', index=False)
+            df.to_excel(writer, sheet_name='Reports', index=False)
+        
+        return True
+    except Exception as e:
+        st.error(f"❌ Помилка створення файлу: {e}")
+        return False
+
 def download_file_from_github(url, local_path):
     """
     Завантажує файл з GitHub
@@ -412,7 +438,14 @@ if st.sidebar.button("🔄 Відновити файл"):
             st.cache_data.clear()
             st.rerun()
         else:
-            st.sidebar.error("❌ Не вдалося завантажити файл")
+            # Якщо GitHub не спрацював, створюємо новий файл
+            st.sidebar.info("📝 Створюю новий файл...")
+            if create_default_excel_file(EXCEL_FILE_PATH):
+                st.sidebar.success("✅ Створено новий файл!")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.sidebar.error("❌ Не вдалося створити файл")
     except Exception as e:
         st.sidebar.error(f"❌ Помилка: {e}")
 
