@@ -104,9 +104,9 @@ def load_lakes_and_reports(excel_path):
         reports_df = pd.read_excel(xl, 'Reports', engine='openpyxl') if 'Reports' in available_sheets else \
                      pd.DataFrame()
 
-        # названия
-        lakes_names = list(lakes_df['LakeHouse'].dropna()) if 'LakeHouse' in lakes_df.columns else list(lakes_df.iloc[:,0].dropna())
-        reports_names = list(reports_df.iloc[:,0].dropna()) if not reports_df.empty else []
+        # названия (уникальные)
+        lakes_names = list(lakes_df['LakeHouse'].dropna().unique()) if 'LakeHouse' in lakes_df.columns else list(lakes_df.iloc[:,0].dropna().unique())
+        reports_names = list(reports_df.iloc[:,0].dropna().unique()) if not reports_df.empty else []
         return lakes_names, reports_names, lakes_df, reports_df
 
     except Exception as e:
@@ -340,11 +340,6 @@ if section == "🏠 Головна":
     st.header("Вітаємо! 👋")
     st.markdown(f"""
     Ця база знань містить інформацію для підтримки та оновлення наших LakeHouses та Power BI Reports.
-
-    **Джерело даних:** Google Sheets (лист *Lakes*) з резервом у локальний Excel.
-
-    **Excel файл (локальний резерв):** `{EXCEL_FILE_PATH}`  
-    **Повний шлях:** `{os.path.abspath(EXCEL_FILE_PATH)}`
     """)
     col1, col2 = st.columns(2)
     with col1: st.metric("🏞️ Data Lakes", len(lakes) if lakes else 0)
@@ -583,4 +578,5 @@ elif section == "📞 Контакти та ресурси":
         """)
 
 # ----------------- конец файла -----------------
+
 
