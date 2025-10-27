@@ -16,7 +16,19 @@ except ImportError:
 # ==== CONFIG SECTION ====
 # Путь к Excel с лейками и звітами. Використовуємо абсолютний шлях до папки з кодом
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-EXCEL_FILE_PATH = os.path.join(SCRIPT_DIR, "LakeHouse.xlsx")
+
+# Проблема: OneDrive синхронізує файл, що може блокувати запис
+# Рішення: Використовуємо локальну папку вне OneDrive для робочих файлів
+LOCAL_DATA_DIR = os.path.join(os.path.expanduser("~"), "Documents", "StreamlitData")
+if not os.path.exists(LOCAL_DATA_DIR):
+    os.makedirs(LOCAL_DATA_DIR)
+
+# Шлях до файлу support OneDrive (читання)
+ONEDRIVE_FILE_PATH = os.path.join(SCRIPT_DIR, "LakeHouse.xlsx")
+# Шлях до локальної копії файлу (запис)
+LOCAL_FILE_PATH = os.path.join(LOCAL_DATA_DIR, "LakeHouse.xlsx")
+# Використовуємо локальний файл для роботи
+EXCEL_FILE_PATH = LOCAL_FILE_PATH
 
 # GitHub URL для файлу (raw формат)
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/AleksandraFilatova/knowledge-transfer-app/main/LakeHouse.xlsx"
