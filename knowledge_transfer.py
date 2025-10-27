@@ -248,6 +248,51 @@ def create_default_excel_file(local_path):
         st.error(f"❌ Помилка створення файлу: {e}")
         return False
 
+def load_from_google_sheets():
+    """
+    Завантажує дані з Google Sheets
+    """
+    try:
+        # Завантажуємо дані з Google Sheets
+        lakes_df = pd.read_csv(GOOGLE_SHEETS_URL_LAKES)
+        reports_df = pd.read_csv(GOOGLE_SHEETS_URL_REPORTS)
+        
+        # Витягуємо назви
+        lakes_names = []
+        reports_names = []
+        
+        if lakes_df is not None and not lakes_df.empty:
+            # Шукаємо колонку з назвами
+            name_columns = ['LakeHouse', 'name', 'Name', 'назва', 'Назва', 'lake_name', 'Lake Name', 'Lakehouse']
+            name_col = None
+            for col in name_columns:
+                if col in lakes_df.columns:
+                    name_col = col
+                    break
+            
+            if name_col:
+                lakes_names = list(lakes_df[name_col].dropna())
+            else:
+                lakes_names = list(lakes_df.iloc[:, 0].dropna())
+        
+        if reports_df is not None and not reports_df.empty:
+            name_columns = ['name', 'Name', 'назва', 'Назва', 'report_name', 'Report Name']
+            name_col = None
+            for col in name_columns:
+                if col in reports_df.columns:
+                    name_col = col
+                    break
+            
+            if name_col:
+                reports_names = list(reports_df[name_col].dropna())
+            else:
+                reports_names = list(reports_df.iloc[:, 0].dropna())
+        
+        return lakes_names, reports_names, lakes_df, reports_df
+    except Exception as e:
+        st.error(f"❌ Помилка завантаження з Google Sheets: {e}")
+        return [], [], None, None
+
 def download_file_from_github(url, local_path):
     """
     Завантажує файл з GitHub
@@ -424,33 +469,22 @@ section = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.info(f"📅 Останнє оновлення:\n{datetime.now().strftime('%d.%m.%Y')}")
 
-# === ДИНАМИЧЕСКИЙ ЗАПРОС таблицы Excel для Lakes & reports ===
-# Перевіряємо, чи файл існує локально
-if os.path.exists(EXCEL_FILE_PATH):
-    lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
-    # Показуємо повідомлення, де зберігаються дані
-    abs_path = os.path.abspath(EXCEL_FILE_PATH)
-    st.sidebar.success(f"📂 Файл: `{abs_path}`")
-else:
-    # Якщо файл не знайдено, спробуємо скопіювати з OneDrive через shutil
-    import shutil
-    onedrive_file_path = EXCEL_FILE_PATH  # Той самий шлях, бо файл вже синхронізований
-    
-    # Перевіряємо, чи файл існує в синхронізованій папці OneDrive
-    if os.path.exists(onedrive_file_path):
+# === ДИНАМИЧЕСКИЙ ЗАПРОС таблицы для Lakes & reports ===
+# Спочатку спробуємо завантажити з Google Sheets
+lakes, reports, lakes_table, reports_table = load_from_google_sheets()
+
+if lakes_table is not None and not lakes_table.empty:
+    st.sidebar.success(f"✅ Дані завантажено з Google Sheets ({len(lakes_table)} рядків)")
+elif lakes_table is None or lakes_table.empty:
+    # Якщо Google Sheets не працює, спробуємо локальний файл
+    if os.path.exists(EXCEL_FILE_PATH):
         try:
-            st.info("📂 Знайдено файл в OneDrive папці")
-            lakes, reports, lakes_table, reports_table = load_lakes_and_reports(onedrive_file_path)
-            abs_path = os.path.abspath(onedrive_file_path)
-            st.sidebar.success(f"✅ Файл завантажено: `{abs_path}`")
+            lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
+            abs_path = os.path.abspath(EXCEL_FILE_PATH)
+            st.sidebar.info(f"📂 Використовую локальний файл: `{abs_path}`")
         except Exception as e:
-            st.error(f"❌ Помилка при читанні файлу: {e}")
-            # Створюємо новий файл
-            if create_default_excel_file(EXCEL_FILE_PATH):
-                lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
-                st.sidebar.success("✅ Створено новий файл")
-            else:
-                lakes, reports, lakes_table, reports_table = [], [], None, None
+            st.error(f"❌ Помилка при читанні локального файлу: {e}")
+            lakes, reports, lakes_table, reports_table = [], [], None, None
     else:
         # Якщо файл не знайдено, пропонуємо завантажити вручну
         st.warning("⚠️ Файл LakeHouse.xlsx не знайдено. Будь ласка, завантажте файл:")
