@@ -355,14 +355,19 @@ def save_to_google_sheets(df, reports_table=None):
             
             # Оновлюємо лист Lakes
             worksheet = sh.worksheet("Lakes")
-            worksheet.clear()
-            worksheet.update([df.columns.values.tolist()] + df.values.tolist())
+            
+            # Підготовлюємо дані для запису
+            data_to_write = [df.columns.values.tolist()] + df.values.tolist()
+            
+            # Використовуємо простіший метод update_range замість clear+update
+            worksheet.update('A1', data_to_write)
             
             # Оновлюємо лист Reports, якщо є дані
             if reports_table is not None and not reports_table.empty:
                 reports_worksheet = sh.worksheet("Reports")
-                reports_worksheet.clear()
-                reports_worksheet.update([reports_table.columns.values.tolist()] + reports_table.values.tolist())
+                reports_data = [reports_table.columns.values.tolist()] + reports_table.values.tolist()
+                
+                reports_worksheet.update('A1', reports_data)
             
             st.success("✅ Дані успішно збережено в Google Sheets!")
             return True
