@@ -519,7 +519,7 @@ elif section == "✏️ Редагування даних":
                     elif col == 'Folder':
                         form_columns[col] = st.text_input("Folder *", key=f"form_{col}")
                     elif col == 'Element':
-                        form_columns[col] = st.text_input("Element *", key=f до"form_{col}")
+                        form_columns[col] = st.text_input("Element *", key=f"form_{col}")
                     elif col == 'URL':
                         form_columns[col] = st.text_input("URL", key=f"form_{col}")
                     elif col not in ['Загальна інформація про лейк', 'Внесення змін']:
