@@ -28,7 +28,8 @@ def load_lakes_and_reports(excel_path):
     Завантажує дані з Excel файлу
     """
     try:
-        xl = pd.ExcelFile(excel_path)
+        # Спробуємо використати openpyxl движок
+        xl = pd.ExcelFile(excel_path, engine='openpyxl')
         available_sheets = xl.sheet_names
         
         lakes_df = None
@@ -38,25 +39,25 @@ def load_lakes_and_reports(excel_path):
         lake_sheet_names = ['Lakes']
         for sheet_name in lake_sheet_names:
             if sheet_name in available_sheets:
-                lakes_df = pd.read_excel(xl, sheet_name)
+                lakes_df = pd.read_excel(xl, sheet_name, engine='openpyxl')
                 break
         
         # Якщо не знайшли спеціальний лист, спробуємо другий лист (якщо є)
         if lakes_df is None and len(available_sheets) > 1:
-            lakes_df = pd.read_excel(xl, available_sheets[1])
+            lakes_df = pd.read_excel(xl, available_sheets[1], engine='openpyxl')
         elif lakes_df is None and available_sheets:
-            lakes_df = pd.read_excel(xl, available_sheets[0])
+            lakes_df = pd.read_excel(xl, available_sheets[0], engine='openpyxl')
         
         # Шукаємо лист зі звітами
         report_sheet_names = ['Reports']
         for sheet_name in report_sheet_names:
             if sheet_name in available_sheets:
-                reports_df = pd.read_excel(xl, sheet_name)
+                reports_df = pd.read_excel(xl, sheet_name, engine='openpyxl')
                 break
         
         # Якщо не знайшли спеціальний лист, використаємо перший лист
         if reports_df is None and available_sheets:
-            reports_df = pd.read_excel(xl, available_sheets[0])
+            reports_df = pd.read_excel(xl, available_sheets[0], engine='openpyxl')
         
         # Витягуємо назви
         lakes_names = []
@@ -220,14 +221,14 @@ def save_data_to_excel(df, filename, lakes_table=None, reports_table=None):
             st.info(f"📄 Файл існує, відкриваю...")
             try:
                 # Спробуємо зчитати існуючий файл
-                existing_file = pd.ExcelFile(filename)
+                existing_file = pd.ExcelFile(filename, engine='openpyxl')
                 existing_sheets = existing_file.sheet_names
                 st.info(f"📊 Існуючі листи: {existing_sheets}")
                 
                 # Читаємо дані з листа Reports, якщо він існує
                 existing_reports = None
                 if 'Reports' in existing_sheets:
-                    existing_reports = pd.read_excel(filename, sheet_name='Reports')
+                    existing_reports = pd.read_excel(filename, sheet_name='Reports', engine='openpyxl')
                     st.info(f"✅ Знайдено лист Reports з {len(existing_reports)} рядків")
                 
                 # Зберігаємо з обома листами
