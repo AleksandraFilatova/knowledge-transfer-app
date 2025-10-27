@@ -658,6 +658,8 @@ elif section == "✏️ Редагування даних":
         # Автоматичне збереження при змінах
         if not edited_df.equals(lakes_table):
             if save_data_to_excel(edited_df, "LakeHouse.xlsx"):
+                # Очищуємо кеш після збереження
+                st.cache_data.clear()
                 st.success("✅ Зміни збережено локально!")
                 st.info("💡 **Важливо:** Для синхронізації з Streamlit Cloud завантаж файл `LakeHouse.xlsx` в GitHub репозиторій")
                 st.rerun()
@@ -667,6 +669,7 @@ elif section == "✏️ Редагування даних":
         
         with col1:
             if st.button("🔄 Оновити дані"):
+                st.cache_data.clear()
                 st.rerun()
         
         with col2:
@@ -709,6 +712,8 @@ elif section == "✏️ Редагування даних":
                     new_df = pd.concat([lakes_table, pd.DataFrame([new_row])], ignore_index=True)
                     
                     if save_data_to_excel(new_df, "LakeHouse.xlsx"):
+                        # Очищуємо кеш, щоб після перезапуску завантажити нові дані
+                        st.cache_data.clear()
                         st.success("✅ Новий запис додано!")
                         st.rerun()
                 else:
