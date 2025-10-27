@@ -41,7 +41,7 @@ os.makedirs(LOCAL_DATA_DIR, exist_ok=True)
 EXCEL_FILE_PATH = os.path.join(LOCAL_DATA_DIR, "LakeHouse.xlsx")
 
 # Google Sheets ID (замени на свой при необходимости)
-GOOGLE_SHEETS_ID = "1khEZV_BX5NALD-BEAT36L0h_3ulBHczb"
+GOOGLE_SHEETS_ID = "19Ge1PiHdeWt0mofW5YkxmectUchGcbclaHNim_XvmFM"
 # Чтение из Google Sheets (CSV через gviz) — листы Lakes/Reports
 GOOGLE_SHEETS_URL_LAKES = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_ID}/gviz/tq?tqx=out:csv&sheet=Lakes"
 GOOGLE_SHEETS_URL_REPORTS = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_ID}/gviz/tq?tqx=out:csv&sheet=Reports"
@@ -583,3 +583,4 @@ elif section == "📞 Контакти та ресурси":
         """)
 
 # ----------------- конец файла -----------------
+
