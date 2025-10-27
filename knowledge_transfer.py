@@ -299,6 +299,38 @@ def download_file_from_github(url, local_path):
     except Exception as e:
         return False
 
+def save_to_google_sheets_csv(df, reports_table=None):
+    """
+    Альтернативний метод: зберігає дані як CSV і завантажує в Google Drive
+    """
+    try:
+        import tempfile
+        import io
+        
+        # Створюємо CSV в пам'яті
+        csv_buffer = io.StringIO()
+        df.to_csv(csv_buffer, index=False, encoding='utf-8')
+        
+        # Зберігаємо локально
+        csv_path = "LakeHouse_Lakes.csv"
+        df.to_csv(csv_path, index=False, encoding='utf-8')
+        
+        # Повертаємо шлях до CSV
+        st.info(f"📄 CSV збережено: {csv_path}")
+        st.download_button("📥 Завантажити CSV", data=csv_buffer.getvalue(), 
+                          file_name="LakeHouse_Lakes.csv", mime="text/csv")
+        
+        st.warning("💡 **Інструкція:**\n"
+                  "1. Завантажте CSV файл\n"
+                  "2. Відкрийте Google Sheets\n"
+                  "3. Виберіть File → Import → Upload → завантажте CSV\n"
+                  "4. Змініть назву листа на 'Lakes'")
+        
+        return True
+    except Exception as e:
+        st.error(f"❌ Помилка: {e}")
+        return False
+
 def save_to_google_sheets(df, reports_table=None):
     """
     Зберігає дані в Google Sheets через gspread
@@ -419,6 +451,12 @@ def save_to_google_sheets(df, reports_table=None):
             
         except Exception as gs_error:
             st.error(f"❌ Помилка запису в Google Sheets: {gs_error}")
+            st.info("💡 Пробуємо альтернативний метод через CSV...")
+            
+            # Альтернатива: CSV завантаження
+            if save_to_google_sheets_csv(df, reports_table):
+                return True
+            
             st.info("💡 Поки що дані будуть збережені локально")
             return False
             
