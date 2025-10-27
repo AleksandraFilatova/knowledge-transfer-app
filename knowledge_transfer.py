@@ -214,25 +214,6 @@ def process_text_with_images(text):
         # Якщо немає зображень, просто показуємо текст
         st.markdown(text)
 
-def download_file_from_onedrive(url, local_path):
-    """
-    Завантажує файл з OneDrive SharePoint
-    """
-    try:
-        # OneDrive потребує спеціальних заголовків
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        with open(local_path, 'wb') as f:
-            f.write(response.content)
-        return True
-    except Exception as e:
-        st.error(f"❌ Помилка завантаження з OneDrive: {e}")
-        return False
-
 def create_default_excel_file(local_path):
     """
     Створює новий Excel файл з базовою структурою
@@ -328,11 +309,41 @@ def save_to_google_sheets(df, reports_table=None):
         
         st.info("🔄 Спроба збереження в Google Sheets...")
         
-        # Варіант 1: Якщо файл публічний, спробуємо отримати доступ
+        # Перевіряємо чи є credentials файл для авторизації
+        credentials_file = "service_account_credentials.json"
+        if not os.path.exists(credentials_file):
+            # Спробуємо знайти файл в різних місцях
+            possible_paths = [
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), credentials_file),
+                os.path.join(os.path.expanduser("~"), credentials_file),
+            ]
+            
+            credentials_found = False
+            for path in possible_paths:
+                if os.path.exists(path):
+                    credentials_file = path
+                    credentials_found = True
+                    break
+            
+            if not credentials_found:
+                st.warning("⚠️ Не знайдено credentials файл для авторизації в Google Sheets API")
+                st.markdown("""
+                **💡 Налаштування запису в Google Sheets:**
+                
+                1. Відкрийте [Google Cloud Console](https://console.cloud.google.com/)
+                2. Створіть новий проєкт або виберіть існуючий
+                3. Увімкніть **Google Sheets API** та **Google Drive API**
+                4. Створіть **Service Account**
+                5. Згенеруйте JSON ключ
+                6. Звантажте файл і збережіть як `service_account_credentials.json` у папці зі скриптом
+                7. Надайте доступ Service Account email до вашої Google таблиці
+                """)
+                st.info("💡 **Поки що дані зберігаються локально**")
+                return False
+        
         try:
-            # Відкриваємо Google Sheets (потрібен повний URL з share link)
-            # Спочатку перевіряємо, чи файл публічний
-            gc = gspread.service_account()  # Потрібен credentials файл
+            # Авторизуємося через Service Account
+            gc = gspread.service_account(filename=credentials_file)
             sh = gc.open_by_key(GOOGLE_SHEETS_ID)
             
             # Оновлюємо лист Lakes
@@ -350,9 +361,8 @@ def save_to_google_sheets(df, reports_table=None):
             return True
             
         except Exception as gs_error:
-            # Якщо не вдалося через API, показуємо повідомлення
-            st.warning(f"⚠️ Автоматичне збереження в Google Sheets неможливе: {gs_error}")
-            st.info("💡 **Альтернатива:** Завантажте CSV файл через кнопку нижче і імпортуйте в Google Sheets")
+            st.error(f"❌ Помилка запису в Google Sheets: {gs_error}")
+            st.info("💡 Поки що дані будуть збережені локально")
             return False
             
     except Exception as e:
@@ -396,7 +406,14 @@ def save_data_to_excel(df, filename, lakes_table=None, reports_table=None):
                         
             except Exception as e:
                 st.warning(f"⚠️ Помилка при читанні існуючого файлу: {e}")
-                st.info("🔄 Спробую створити новий файл...")
+                st.info("🗑️ Видаляю пошкоджений файл...")
+                # Видаляємо пошкоджений файл
+                try:
+                    os.remove(filename)
+                    st.info("✅ Пошкоджений файл видалено")
+                except:
+                    st.warning("⚠️ Не вдалося видалити пошкоджений файл")
+                st.info("🔄 Створюю новий файл...")
                 # Якщо не вдалося відкрити, просто перезапишемо
                 with pd.ExcelWriter(filename, engine='openpyxl', mode='w') as writer:
                     df.to_excel(writer, sheet_name='Lakes', index=False)
@@ -414,7 +431,7 @@ def save_data_to_excel(df, filename, lakes_table=None, reports_table=None):
         return True, filename
     except PermissionError as e:
         st.error(f"❌ Помилка доступу до файлу: {e}")
-        st.warning("💡 Можливо, файл відкритий в іншій програмі або синхронізується з OneDrive. Закрийте Excel і спробуйте ще раз.")
+        st.warning("💡 Можливо, файл відкритий в іншій програмі (наприклад Excel). Закрийте його і спробуйте ще раз.")
         return False, None
     except Exception as e:
         st.error(f"❌ Помилка при збереженні: {type(e).__name__}: {e}")
@@ -967,14 +984,16 @@ elif section == "✏️ Редагування даних":
                         time.sleep(2)  # Затримка щоб побачити повідомлення
                         st.rerun()
                     else:
-                        # Якщо не вдалося, зберігаємо локально
+                        # Якщо не вдалося записати в Google Sheets, зберігаємо локально
+                        st.warning("⚠️ Неможливо записати в Google Sheets. Зберігаю локально як резервну копію.")
                         success, saved_file = save_data_to_excel(new_df, EXCEL_FILE_PATH, 
                                                                  lakes_table=None, reports_table=reports_table)
                         if success:
                             st.cache_data.clear()
                             abs_path = os.path.abspath(saved_file)
-                            st.success(f"✅ Новий запис додано локально в: `{abs_path}`")
-                            time.sleep(2)  # Затримка щоб побачити повідомлення
+                            st.info(f"💾 Резервна копія збережена локально: `{abs_path}`")
+                            st.error("❌ **УВАГА:** Дані НЕ збережені в Google Sheets!")
+                            time.sleep(3)  # Більша затримка щоб побачити всі повідомлення
                             st.rerun()
                 else:
                     st.error("❌ Заповніть обов'язкові поля: LakeHouse, Folder, Element")
