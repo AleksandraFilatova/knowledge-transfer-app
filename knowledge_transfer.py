@@ -21,6 +21,9 @@ EXCEL_FILE_PATH = os.path.join(SCRIPT_DIR, "LakeHouse.xlsx")
 # GitHub URL для файлу (raw формат)
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/AleksandraFilatova/knowledge-transfer-app/main/LakeHouse.xlsx"
 
+# OneDrive URL як резервне джерело
+ONEDRIVE_URL = "https://pfdarnitsa-my.sharepoint.com/personal/analytics_darnitsa_ua/Documents/%D0%91%D0%BB%D0%BE%D0%BA%D0%BD%D0%BE%D1%82%D0%B8/Streamlit/LakeHouse.xlsx?web=1"
+
 # ======= Функція для читання інформації з Excel =========
 @st.cache_data(ttl=300)
 def load_lakes_and_reports(excel_path):
@@ -195,6 +198,25 @@ def process_text_with_images(text):
     else:
         # Якщо немає зображень, просто показуємо текст
         st.markdown(text)
+
+def download_file_from_onedrive(url, local_path):
+    """
+    Завантажує файл з OneDrive SharePoint
+    """
+    try:
+        # OneDrive потребує спеціальних заголовків
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        with open(local_path, 'wb') as f:
+            f.write(response.content)
+        return True
+    except Exception as e:
+        st.error(f"❌ Помилка завантаження з OneDrive: {e}")
+        return False
 
 def download_file_from_github(url, local_path):
     """
@@ -372,8 +394,8 @@ section = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.info(f"📅 Останнє оновлення:\n{datetime.now().strftime('%d.%m.%Y')}")
 
-# Кнопка для відновлення файлу з GitHub
-if st.sidebar.button("🔄 Відновити файл з GitHub"):
+# Кнопка для відновлення файлу з OneDrive або GitHub
+if st.sidebar.button("🔄 Відновити файл"):
     try:
         # Видаляємо пошкоджений файл
         if os.path.exists(EXCEL_FILE_PATH):
@@ -383,13 +405,21 @@ if st.sidebar.button("🔄 Відновити файл з GitHub"):
             except:
                 st.sidebar.warning("⚠️ Не вдалося видалити файл")
         
-        # Завантажуємо свіжий файл
-        if download_file_from_github(GITHUB_RAW_URL, EXCEL_FILE_PATH):
-            st.sidebar.success("✅ Файл відновлено!")
+        # Спробуємо завантажити з OneDrive
+        st.sidebar.info("🔄 Завантажую з OneDrive...")
+        if download_file_from_onedrive(ONEDRIVE_URL, EXCEL_FILE_PATH):
+            st.sidebar.success("✅ Файл відновлено з OneDrive!")
             st.cache_data.clear()
             st.rerun()
         else:
-            st.sidebar.error("❌ Не вдалося завантажити файл")
+            # Спробуємо GitHub
+            st.sidebar.info("🔄 Спробую GitHub...")
+            if download_file_from_github(GITHUB_RAW_URL, EXCEL_FILE_PATH):
+                st.sidebar.success("✅ Файл відновлено з GitHub!")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.sidebar.error("❌ Не вдалося завантажити файл")
     except Exception as e:
         st.sidebar.error(f"❌ Помилка: {e}")
 
@@ -402,15 +432,23 @@ if os.path.exists(EXCEL_FILE_PATH):
     abs_path = os.path.abspath(EXCEL_FILE_PATH)
     st.sidebar.success(f"📂 Файл: `{abs_path}`")
 else:
-    # Якщо файл не знайдено локально, спробуємо завантажити з GitHub
-    if download_file_from_github(GITHUB_RAW_URL, EXCEL_FILE_PATH):
+    # Якщо файл не знайдено локально, спробуємо завантажити з OneDrive
+    st.info("🔄 Завантажую файл з OneDrive...")
+    if download_file_from_onedrive(ONEDRIVE_URL, EXCEL_FILE_PATH):
         lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
         abs_path = os.path.abspath(EXCEL_FILE_PATH)
-        st.sidebar.success(f"✅ Файл завантажено з GitHub: `{abs_path}`")
+        st.sidebar.success(f"✅ Файл завантажено з OneDrive: `{abs_path}`")
     else:
-        # Якщо не вдалося завантажити з GitHub, пропонуємо завантажити вручну
-        st.warning("⚠️ Файл LakeHouse.xlsx не знайдено. Будь ласка, завантажте файл:")
-        uploaded_file = st.file_uploader("Завантажте Excel файл", type=['xlsx', 'xls'])
+        # Якщо не вдалося завантажити з OneDrive, спробуємо GitHub
+        st.info("🔄 Спробую завантажити з GitHub...")
+        if download_file_from_github(GITHUB_RAW_URL, EXCEL_FILE_PATH):
+            lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
+            abs_path = os.path.abspath(EXCEL_FILE_PATH)
+            st.sidebar.success(f"✅ Файл завантажено з GitHub: `{abs_path}`")
+        else:
+            # Якщо не вдалося завантажити з GitHub, пропонуємо завантажити вручну
+            st.warning("⚠️ Файл LakeHouse.xlsx не знайдено. Будь ласка, завантажте файл:")
+            uploaded_file = st.file_uploader("Завантажте Excel файл", type=['xlsx', 'xls'])
         
         if uploaded_file is not None:
             # Зберігаємо завантажений файл
