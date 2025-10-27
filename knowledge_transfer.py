@@ -374,6 +374,15 @@ st.sidebar.info(f"📅 Останнє оновлення:\n{datetime.now().strft
 # Кнопка для відновлення файлу з GitHub
 if st.sidebar.button("🔄 Відновити файл з GitHub"):
     try:
+        # Видаляємо пошкоджений файл
+        if os.path.exists(EXCEL_FILE_PATH):
+            try:
+                os.remove(EXCEL_FILE_PATH)
+                st.sidebar.info("🗑️ Видалено пошкоджений файл")
+            except:
+                st.sidebar.warning("⚠️ Не вдалося видалити файл")
+        
+        # Завантажуємо свіжий файл
         if download_file_from_github(GITHUB_RAW_URL, EXCEL_FILE_PATH):
             st.sidebar.success("✅ Файл відновлено!")
             st.cache_data.clear()
