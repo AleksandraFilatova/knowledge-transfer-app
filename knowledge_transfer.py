@@ -543,6 +543,20 @@ section = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.info(f"📅 Останнє оновлення:\n{datetime.now().strftime('%d.%m.%Y')}")
 
+# Перевіряємо чи є credentials файл
+CREDENTIALS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "service_account_credentials.json")
+if not os.path.exists(CREDENTIALS_FILE):
+    st.sidebar.markdown("---")
+    st.sidebar.warning("⚠️ Google Sheets credentials")
+    st.sidebar.markdown("Для запису в Google Sheets потрібен credentials файл.")
+    uploaded_credentials = st.sidebar.file_uploader("Завантажте credentials.json", type=['json'], key='credentials_upload')
+    if uploaded_credentials is not None:
+        # Зберігаємо файл
+        with open(CREDENTIALS_FILE, "wb") as f:
+            f.write(uploaded_credentials.getbuffer())
+        st.sidebar.success("✅ Credentials завантажено!")
+        st.rerun()
+
 # === ДИНАМИЧЕСКИЙ ЗАПРОС таблицы для Lakes & reports ===
 # Спочатку спробуємо завантажити з Google Sheets
 lakes, reports, lakes_table, reports_table = load_from_google_sheets()
