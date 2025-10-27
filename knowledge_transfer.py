@@ -94,6 +94,8 @@ def load_lakes_and_reports(excel_path):
         
     except Exception as e:
         st.error(f"❌ Помилка при завантаженні файлу: {e}")
+        st.warning("💡 **Файл пошкоджений або заблокований OneDrive.**")
+        st.info("**Рішення:**\n1. Закрийте файл в Excel\n2. Почекайте поки OneDrive синхронізується\n3. Перезавантажте сторінку (Ctrl+R)")
         return [], [], None, None
 
 def analyze_lakes_data(lakes_df):
@@ -368,6 +370,18 @@ section = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 st.sidebar.info(f"📅 Останнє оновлення:\n{datetime.now().strftime('%d.%m.%Y')}")
+
+# Кнопка для відновлення файлу з GitHub
+if st.sidebar.button("🔄 Відновити файл з GitHub"):
+    try:
+        if download_file_from_github(GITHUB_RAW_URL, EXCEL_FILE_PATH):
+            st.sidebar.success("✅ Файл відновлено!")
+            st.cache_data.clear()
+            st.rerun()
+        else:
+            st.sidebar.error("❌ Не вдалося завантажити файл")
+    except Exception as e:
+        st.sidebar.error(f"❌ Помилка: {e}")
 
 
 # === ДИНАМИЧЕСКИЙ ЗАПРОС таблицы Excel для Lakes & reports ===
