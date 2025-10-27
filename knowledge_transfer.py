@@ -1,160 +1,54 @@
+# app.py
+# ---------------------------
+# Knowledge Transfer App (Google Sheets + локальный fallback)
+# Исправлено:
+# - запись в Google Sheets: update с A1-диапазоном, правильная конвертация колонки > 'Z'
+# - чтение credentials из st.secrets (или из файла)
+# - гарантия аркушей Lakes/Reports
+# ---------------------------
+
 import streamlit as st
 from datetime import datetime
 import os
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from PIL import Image
 import base64
 import requests
 import time
-try:
-    from openpyxl import load_workbook
-except ImportError:
-    openpyxl = None
+import json
 
+try:
+    from openpyxl import load_workbook  # noqa: F401
+except ImportError:
+    pass
+
+# ===== Google Sheets (новые) =====
 try:
     import gspread
     from google.oauth2.service_account import Credentials
+    from gspread.utils import rowcol_to_a1
     GOOGLE_SHEETS_AVAILABLE = True
-except ImportError as e:
+    GS_IMPORT_ERROR = ""
+except Exception as e:
     GOOGLE_SHEETS_AVAILABLE = False
-    IMPORT_ERROR = str(e)
-    # Не виводимо повідомлення тут, тому що Streamlit ще не ініціалізований
+    GS_IMPORT_ERROR = str(e)
 
 # ==== CONFIG SECTION ====
-# Використовуємо локальну папку поза OneDrive для збереження даних
+# Локальная папка для резервных сохранений
 LOCAL_DATA_DIR = os.path.join(os.path.expanduser("~"), "AppData", "Local", "StreamlitData")
-if not os.path.exists(LOCAL_DATA_DIR):
-    os.makedirs(LOCAL_DATA_DIR)
+os.makedirs(LOCAL_DATA_DIR, exist_ok=True)
 EXCEL_FILE_PATH = os.path.join(LOCAL_DATA_DIR, "LakeHouse.xlsx")
 
-# Google Sheets ID
+# Google Sheets ID (замени на свой при необходимости)
 GOOGLE_SHEETS_ID = "1khEZV_BX5NALD-BEAT36L0h_3ulBHczb"
-# URL для експорту з Google Sheets (CSV формат для Lakes)
+# Чтение из Google Sheets (CSV через gviz) — листы Lakes/Reports
 GOOGLE_SHEETS_URL_LAKES = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_ID}/gviz/tq?tqx=out:csv&sheet=Lakes"
-# URL для експорту з Google Sheets (CSV формат для Reports)
 GOOGLE_SHEETS_URL_REPORTS = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_ID}/gviz/tq?tqx=out:csv&sheet=Reports"
 
-# GitHub URL для файлу (raw формат) - резервне джерело
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/AleksandraFilatova/knowledge-transfer-app/main/LakeHouse.xlsx"
-
-# ======= Функція для читання інформації з Excel =========
-@st.cache_data(ttl=300)
-def load_lakes_and_reports(excel_path):
-    """
-    Завантажує дані з Excel файлу
-    """
-    try:
-        # Спробуємо використати openpyxl движок
-        xl = pd.ExcelFile(excel_path, engine='openpyxl')
-        available_sheets = xl.sheet_names
-        
-        lakes_df = None
-        reports_df = None
-        
-        # Шукаємо лист з лейками (можливі варіанти назв)
-        lake_sheet_names = ['Lakes']
-        for sheet_name in lake_sheet_names:
-            if sheet_name in available_sheets:
-                lakes_df = pd.read_excel(xl, sheet_name, engine='openpyxl')
-                break
-        
-        # Якщо не знайшли спеціальний лист, спробуємо другий лист (якщо є)
-        if lakes_df is None and len(available_sheets) > 1:
-            lakes_df = pd.read_excel(xl, available_sheets[1], engine='openpyxl')
-        elif lakes_df is None and available_sheets:
-            lakes_df = pd.read_excel(xl, available_sheets[0], engine='openpyxl')
-        
-        # Шукаємо лист зі звітами
-        report_sheet_names = ['Reports']
-        for sheet_name in report_sheet_names:
-            if sheet_name in available_sheets:
-                reports_df = pd.read_excel(xl, sheet_name, engine='openpyxl')
-                break
-        
-        # Якщо не знайшли спеціальний лист, використаємо перший лист
-        if reports_df is None and available_sheets:
-            reports_df = pd.read_excel(xl, available_sheets[0], engine='openpyxl')
-        
-        # Витягуємо назви
-        lakes_names = []
-        reports_names = []
-        
-        if lakes_df is not None and not lakes_df.empty:
-            # Шукаємо колонку з назвами (можливі варіанти)
-            name_columns = ['LakeHouse', 'name', 'Name', 'назва', 'Назва', 'lake_name', 'Lake Name', 'Lakehouse']
-            name_col = None
-            for col in name_columns:
-                if col in lakes_df.columns:
-                    name_col = col
-                    break
-            
-            if name_col:
-                lakes_names = list(lakes_df[name_col].dropna())
-            else:
-                # Якщо не знайшли колонку з назвами, використаємо першу колонку
-                lakes_names = list(lakes_df.iloc[:, 0].dropna())
-        
-        if reports_df is not None and not reports_df.empty:
-            name_columns = ['name', 'Name', 'назва', 'Назва', 'report_name', 'Report Name']
-            name_col = None
-            for col in name_columns:
-                if col in reports_df.columns:
-                    name_col = col
-                    break
-            
-            if name_col:
-                reports_names = list(reports_df[name_col].dropna())
-            else:
-                reports_names = list(reports_df.iloc[:, 0].dropna())
-        
-        return lakes_names, reports_names, lakes_df, reports_df
-        
-    except Exception as e:
-        st.error(f"❌ Помилка при завантаженні файлу: {e}")
-        st.warning("💡 **Файл пошкоджений або заблокований OneDrive.**")
-        st.info("**Рішення:**\n1. Закрийте файл в Excel\n2. Почекайте поки OneDrive синхронізується\n3. Перезавантажте сторінку (Ctrl+R)")
-        return [], [], None, None
-
-def analyze_lakes_data(lakes_df):
-    """
-    Аналізує дані лейків та повертає статистику
-    """
-    if lakes_df is None or lakes_df.empty:
-        return {
-            'total_lakes': 0,
-            'columns': [],
-            'missing_data': {},
-            'unique_values': {}
-        }
-    
-    analysis = {
-        'total_lakes': len(lakes_df),
-        'columns': list(lakes_df.columns),
-        'missing_data': {},
-        'unique_values': {}
-    }
-    
-    # Аналіз пропущених даних
-    for col in lakes_df.columns:
-        missing_count = lakes_df[col].isna().sum()
-        analysis['missing_data'][col] = missing_count
-    
-    # Аналіз унікальних значень для кожної колонки
-    for col in lakes_df.columns:
-        if lakes_df[col].dtype == 'object':  # Текстові колонки
-            analysis['unique_values'][col] = lakes_df[col].value_counts().to_dict()
-    
-    return analysis
-
+# ----------------- Утилиты отображения -----------------
 def display_image_from_path(image_path, caption=None, width=None):
-    """
-    Відображає зображення з файлового шляху або URL
-    """
     try:
-        # Перевіряємо, чи це URL
         if image_path.startswith(('http://', 'https://')):
             st.image(image_path, caption=caption, width=width)
         elif os.path.exists(image_path):
@@ -166,821 +60,401 @@ def display_image_from_path(image_path, caption=None, width=None):
         st.error(f"❌ Помилка при завантаженні зображення: {e}")
 
 def display_image_from_base64(base64_string, caption=None, width=None):
-    """
-    Відображає зображення з base64 рядка
-    """
     try:
-        # Декодуємо base64
         image_data = base64.b64decode(base64_string)
         st.image(image_data, caption=caption, width=width)
     except Exception as e:
         st.error(f"❌ Помилка при декодуванні зображення: {e}")
 
-def process_text_with_images(text):
-    """
-    Обробляє текст та відображає зображення, якщо знайдені посилання на них
-    """
+def process_text_with_images(text: str):
     if not text:
         return text
-    
-    # Шукаємо посилання на зображення в тексті
     import re
-    
-    # Паттерн для пошуку посилань на зображення
     image_pattern = r'\[IMAGE:(.*?)\]'
     matches = re.findall(image_pattern, text)
-    
     if matches:
-        # Розділяємо текст на частини
         parts = re.split(image_pattern, text)
-        
         for i, part in enumerate(parts):
-            if i % 2 == 0:  # Текст
+            if i % 2 == 0:
                 if part.strip():
                     st.markdown(part)
-            else:  # Шлях до зображення
+            else:
                 image_path = part.strip()
-        # Перевіряємо, чи це локальний шлях, і замінюємо на GitHub URL
-        if image_path.startswith('C:\\') and 'PL-notebook.png' in image_path:
-            # Замінюємо локальний шлях на GitHub URL
-            github_url = "https://raw.githubusercontent.com/AleksandraFilatova/knowledge-transfer-app/main/Image/Sac-notebook.PNG"
-            display_image_from_path(github_url, width=600)
-        elif 'github.com' in image_path and '/blob/' in image_path:
-            # Автоматично виправляємо GitHub blob URL на raw URL
-            raw_url = image_path.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/')
-            display_image_from_path(raw_url, width=600)
-        else:
-            display_image_from_path(image_path, width=600)
+                if image_path.startswith('C:\\') and 'PL-notebook.png' in image_path:
+                    github_url = "https://raw.githubusercontent.com/AleksandraFilatova/knowledge-transfer-app/main/Image/Sac-notebook.PNG"
+                    display_image_from_path(github_url, width=600)
+                elif 'github.com' in image_path and '/blob/' in image_path:
+                    raw_url = image_path.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/')
+                    display_image_from_path(raw_url, width=600)
+                else:
+                    display_image_from_path(image_path, width=600)
     else:
-        # Якщо немає зображень, просто показуємо текст
         st.markdown(text)
 
-def create_default_excel_file(local_path):
-    """
-    Створює новий Excel файл з базовою структурою
-    """
+# ----------------- Чтение Excel локально -----------------
+@st.cache_data(ttl=300)
+def load_lakes_and_reports(excel_path):
     try:
-        # Створюємо базову структуру
+        xl = pd.ExcelFile(excel_path, engine='openpyxl')
+        available_sheets = xl.sheet_names
+
+        lakes_df = pd.read_excel(xl, 'Lakes', engine='openpyxl') if 'Lakes' in available_sheets else \
+                   pd.read_excel(xl, available_sheets[0], engine='openpyxl')
+
+        reports_df = pd.read_excel(xl, 'Reports', engine='openpyxl') if 'Reports' in available_sheets else \
+                     pd.DataFrame()
+
+        # названия
+        lakes_names = list(lakes_df['LakeHouse'].dropna()) if 'LakeHouse' in lakes_df.columns else list(lakes_df.iloc[:,0].dropna())
+        reports_names = list(reports_df.iloc[:,0].dropna()) if not reports_df.empty else []
+        return lakes_names, reports_names, lakes_df, reports_df
+
+    except Exception as e:
+        st.error(f"❌ Помилка при завантаженні файлу: {e}")
+        st.warning("💡 Закрийте файл в Excel, дочекайтесь синхронізації OneDrive, оновіть сторінку.")
+        return [], [], None, None
+
+def create_default_excel_file(local_path):
+    try:
         default_data = {
-            'LakeHouse': [],
-            'Folder': [],
-            'Element': [],
-            'URL': [],
-            'Загальна інформація про лейк': [],
-            'Внесення змін': []
+            'LakeHouse': [], 'Folder': [], 'Element': [], 'URL': [],
+            'Загальна інформація про лейк': [], 'Внесення змін': []
         }
         df = pd.DataFrame(default_data)
-        
-        # Зберігаємо в Excel з двома листами
         with pd.ExcelWriter(local_path, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='Lakes', index=False)
             df.to_excel(writer, sheet_name='Reports', index=False)
-        
         return True
     except Exception as e:
         st.error(f"❌ Помилка створення файлу: {e}")
         return False
 
-def load_from_google_sheets():
-    """
-    Завантажує дані з Google Sheets
-    """
+def save_data_to_excel(df, filename, reports_table=None):
     try:
-        # Завантажуємо дані з Google Sheets
-        lakes_df = pd.read_csv(GOOGLE_SHEETS_URL_LAKES)
-        reports_df = pd.read_csv(GOOGLE_SHEETS_URL_REPORTS)
-        
-        # Витягуємо назви
-        lakes_names = []
-        reports_names = []
-        
-        if lakes_df is not None and not lakes_df.empty:
-            # Шукаємо колонку з назвами
-            name_columns = ['LakeHouse', 'name', 'Name', 'назва', 'Назва', 'lake_name', 'Lake Name', 'Lakehouse']
-            name_col = None
-            for col in name_columns:
-                if col in lakes_df.columns:
-                    name_col = col
-                    break
-            
-            if name_col:
-                lakes_names = list(lakes_df[name_col].dropna())
-            else:
-                lakes_names = list(lakes_df.iloc[:, 0].dropna())
-        
-        if reports_df is not None and not reports_df.empty:
-            name_columns = ['name', 'Name', 'назва', 'Назва', 'report_name', 'Report Name']
-            name_col = None
-            for col in name_columns:
-                if col in reports_df.columns:
-                    name_col = col
-                    break
-            
-            if name_col:
-                reports_names = list(reports_df[name_col].dropna())
-            else:
-                reports_names = list(reports_df.iloc[:, 0].dropna())
-        
-        return lakes_names, reports_names, lakes_df, reports_df
-    except Exception as e:
-        st.error(f"❌ Помилка завантаження з Google Sheets: {e}")
-        return [], [], None, None
-
-def download_file_from_github(url, local_path):
-    """
-    Завантажує файл з GitHub
-    """
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        with open(local_path, 'wb') as f:
-            f.write(response.content)
-        return True
-    except Exception as e:
-        return False
-
-def save_to_google_sheets_csv(df, reports_table=None):
-    """
-    Альтернативний метод: зберігає дані як CSV і завантажує в Google Drive
-    """
-    try:
-        import tempfile
-        import io
-        
-        # Створюємо CSV в пам'яті
-        csv_buffer = io.StringIO()
-        df.to_csv(csv_buffer, index=False, encoding='utf-8')
-        
-        # Зберігаємо локально
-        csv_path = "LakeHouse_Lakes.csv"
-        df.to_csv(csv_path, index=False, encoding='utf-8')
-        
-        # Повертаємо шлях до CSV
-        st.info(f"📄 CSV збережено: {csv_path}")
-        st.download_button("📥 Завантажити CSV", data=csv_buffer.getvalue(), 
-                          file_name="LakeHouse_Lakes.csv", mime="text/csv")
-        
-        st.warning("💡 **Інструкція:**\n"
-                  "1. Завантажте CSV файл\n"
-                  "2. Відкрийте Google Sheets\n"
-                  "3. Виберіть File → Import → Upload → завантажте CSV\n"
-                  "4. Змініть назву листа на 'Lakes'")
-        
-        return True
-    except Exception as e:
-        st.error(f"❌ Помилка: {e}")
-        return False
-
-def save_to_google_sheets(df, reports_table=None):
-    """
-    Зберігає дані в Google Sheets через gspread
-    """
-    try:
-        if not GOOGLE_SHEETS_AVAILABLE:
-            st.warning("⚠️ Бібліотека gspread не встановлена")
-            st.error(f"Помилка імпорту: {IMPORT_ERROR if 'IMPORT_ERROR' in globals() else 'Невідома помилка'}")
-            st.info("💡 Спробуйте встановити: pip install gspread google-auth")
-            return False
-        
-        st.info("🔄 Спроба збереження в Google Sheets...")
-        
-        # Перевіряємо чи є credentials файл для авторизації
-        # Спочатку шукаємо поруч зі скриптом
-        credentials_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "service_account_credentials.json")
-        
-        # Якщо не знайдено, шукаємо в інших місцях
-        if not os.path.exists(credentials_file):
-            possible_paths = [
-                "service_account_credentials.json",  # Поточна папка
-                os.path.join(os.path.expanduser("~"), "service_account_credentials.json"),
-            ]
-            
-            credentials_found = False
-            for path in possible_paths:
-                if os.path.exists(path):
-                    credentials_file = path
-                    credentials_found = True
-                    break
-            
-            if not credentials_found:
-                st.warning("⚠️ Не знайдено credentials файл для авторизації в Google Sheets API")
-                st.markdown("""
-                **💡 Налаштування запису в Google Sheets:**
-                
-                1. Відкрийте [Google Cloud Console](https://console.cloud.google.com/)
-                2. Створіть новий проєкт або виберіть існуючий
-                3. Увімкніть **Google Sheets API** та **Google Drive API**
-                4. Створіть **Service Account**
-                5. Згенеруйте JSON ключ
-                6. Звантажте файл і збережіть як `service_account_credentials.json` у папці зі скриптом
-                7. Надайте доступ Service Account email до вашої Google таблиці
-                """)
-                st.info("💡 **Поки що дані зберігаються локально**")
-                return False
-        
-        try:
-            # Авторизуємося через Service Account
-            st.info(f"🔑 Використовую credentials файл: {credentials_file}")
-            gc = gspread.service_account(filename=credentials_file)
-            st.info(f"📊 Відкриваю Google Sheets з ID: {GOOGLE_SHEETS_ID}")
-            sh = gc.open_by_key(GOOGLE_SHEETS_ID)
-            
-            # Перевіряємо доступ до таблиці
-            st.info(f"📋 Назва таблиці: {sh.title}")
-            st.info(f"🔗 URL таблиці: {sh.url}")
-            
-            # Перевіряємо існуючі листи
-            worksheets = sh.worksheets()
-            worksheet_names = [ws.title for ws in worksheets]
-            st.info(f"📄 Існуючі листи: {worksheet_names}")
-            
-            # Оновлюємо лист Lakes
-            try:
-                worksheet = sh.worksheet("Lakes")
-            except gspread.WorksheetNotFound:
-                # Якщо лист не існує, створюємо його
-                worksheet = sh.add_worksheet(title="Lakes", rows=1000, cols=20)
-            
-            # Підготовлюємо дані для запису
-            data_to_write = [df.columns.values.tolist()] + df.values.tolist()
-            
-            # Спробуємо різні методи запису
-            try:
-                # Метод 1: batch_update з діапазоном
-                worksheet.batch_update([{
-                    'range': f'A1:{chr(64 + len(df.columns))}{len(data_to_write)}',
-                    'values': data_to_write
-                }], value_input_option='RAW')
-            except Exception as e1:
-                st.warning(f"Метод 1 не спрацював: {e1}")
-                try:
-                    # Метод 2: простий update
-                    worksheet.update('A1', data_to_write)
-                except Exception as e2:
-                    st.warning(f"Метод 2 не спрацював: {e2}")
-                    # Метод 3: append_rows
-                    worksheet.clear()
-                    worksheet.append_rows(data_to_write)
-            
-            # Оновлюємо лист Reports, якщо є дані
+        st.info(f"💾 Резервне локальне збереження: {filename}")
+        with pd.ExcelWriter(filename, engine='openpyxl', mode='w') as writer:
+            df.to_excel(writer, sheet_name='Lakes', index=False)
             if reports_table is not None and not reports_table.empty:
-                try:
-                    reports_worksheet = sh.worksheet("Reports")
-                except gspread.WorksheetNotFound:
-                    reports_worksheet = sh.add_worksheet(title="Reports", rows=1000, cols=20)
-                
-                reports_data = [reports_table.columns.values.tolist()] + reports_table.values.tolist()
-                
-                # Спробуємо різні методи запису для Reports
-                try:
-                    reports_worksheet.batch_update([{
-                        'range': f'A1:{chr(64 + len(reports_table.columns))}{len(reports_data)}',
-                        'values': reports_data
-                    }], value_input_option='RAW')
-                except Exception as e1:
-                    st.warning(f"Reports метод 1 не спрацював: {e1}")
-                    try:
-                        reports_worksheet.update('A1', reports_data)
-                    except Exception as e2:
-                        st.warning(f"Reports метод 2 не спрацював: {e2}")
-                        reports_worksheet.clear()
-                        reports_worksheet.append_rows(reports_data)
-            
-            st.success("✅ Дані успішно збережено в Google Sheets!")
-            return True
-            
-        except Exception as gs_error:
-            st.error(f"❌ Помилка запису в Google Sheets: {gs_error}")
-            st.info("💡 Пробуємо альтернативний метод через CSV...")
-            
-            # Альтернатива: CSV завантаження
-            if save_to_google_sheets_csv(df, reports_table):
-                return True
-            
-            st.info("💡 Поки що дані будуть збережені локально")
-            return False
-            
-    except Exception as e:
-        st.error(f"❌ Помилка: {e}")
-        return False
-
-def save_data_to_excel(df, filename, lakes_table=None, reports_table=None):
-    """
-    Зберігає DataFrame в Excel файл з підтримкою множинних листів
-    """
-    try:
-        st.info(f"🔄 Намагаюся зберегти локально: {filename}")
-        
-        # Відкриваємо існуючий файл, якщо він є
-        if os.path.exists(filename):
-            st.info(f"📄 Файл існує, відкриваю...")
-            try:
-                # Спробуємо зчитати існуючий файл
-                existing_file = pd.ExcelFile(filename, engine='openpyxl')
-                existing_sheets = existing_file.sheet_names
-                st.info(f"📊 Існуючі листи: {existing_sheets}")
-                
-                # Читаємо дані з листа Reports, якщо він існує
-                existing_reports = None
-                if 'Reports' in existing_sheets:
-                    existing_reports = pd.read_excel(filename, sheet_name='Reports', engine='openpyxl')
-                    st.info(f"✅ Знайдено лист Reports з {len(existing_reports)} рядків")
-                
-                # Зберігаємо з обома листами
-                with pd.ExcelWriter(filename, engine='openpyxl', mode='w') as writer:
-                    df.to_excel(writer, sheet_name='Lakes', index=False, if_sheet_exists='replace')
-                    st.info(f"✅ Збережено лист Lakes з {len(df)} рядків")
-                    
-                    # Використовуємо існуючі дані Reports, якщо вони є
-                    if existing_reports is not None and not existing_reports.empty:
-                        existing_reports.to_excel(writer, sheet_name='Reports', index=False, if_sheet_exists='replace')
-                        st.info(f"✅ Збережено лист Reports з {len(existing_reports)} рядків")
-                    elif reports_table is not None and not reports_table.empty:
-                        reports_table.to_excel(writer, sheet_name='Reports', index=False, if_sheet_exists='replace')
-                        st.info(f"✅ Збережено новий лист Reports з {len(reports_table)} рядків")
-                        
-            except Exception as e:
-                st.warning(f"⚠️ Помилка при читанні існуючого файлу: {e}")
-                st.info("🗑️ Видаляю пошкоджений файл...")
-                # Видаляємо пошкоджений файл
-                try:
-                    os.remove(filename)
-                    st.info("✅ Пошкоджений файл видалено")
-                except:
-                    st.warning("⚠️ Не вдалося видалити пошкоджений файл")
-                st.info("🔄 Створюю новий файл...")
-                # Якщо не вдалося відкрити, просто перезапишемо
-                with pd.ExcelWriter(filename, engine='openpyxl', mode='w') as writer:
-                    df.to_excel(writer, sheet_name='Lakes', index=False)
-                    if reports_table is not None and not reports_table.empty:
-                        reports_table.to_excel(writer, sheet_name='Reports', index=False)
-        else:
-            # Якщо файлу немає, створюємо новий
-            st.info(f"📝 Файлу не існує, створюю новий...")
-            with pd.ExcelWriter(filename, engine='openpyxl', mode='w') as writer:
-                df.to_excel(writer, sheet_name='Lakes', index=False)
-                if reports_table is not None and not reports_table.empty:
-                    reports_table.to_excel(writer, sheet_name='Reports', index=False)
-        
-        st.success(f"✅ Файл успішно збережено: {os.path.abspath(filename)}")
+                reports_table.to_excel(writer, sheet_name='Reports', index=False)
+        st.success(f"✅ Локальний файл збережено: {os.path.abspath(filename)}")
         return True, filename
     except PermissionError as e:
-        st.error(f"❌ Помилка доступу до файлу: {e}")
-        st.warning("💡 Можливо, файл відкритий в іншій програмі (наприклад Excel). Закрийте його і спробуйте ще раз.")
+        st.error(f"❌ Доступ до файлу: {e}")
         return False, None
     except Exception as e:
-        st.error(f"❌ Помилка при збереженні: {type(e).__name__}: {e}")
-        import traceback
-        st.code(traceback.format_exc())
+        st.error(f"❌ Помилка при локальному збереженні: {type(e).__name__}: {e}")
         return False, None
 
+# ----------------- Аналитика (визуалки) -----------------
+def analyze_lakes_data(lakes_df: pd.DataFrame):
+    if lakes_df is None or lakes_df.empty:
+        return {'total_lakes': 0, 'columns': [], 'missing_data': {}, 'unique_values': {}}
+    analysis = {
+        'total_lakes': len(lakes_df),
+        'columns': list(lakes_df.columns),
+        'missing_data': {c: lakes_df[c].isna().sum() for c in lakes_df.columns},
+        'unique_values': {}
+    }
+    for c in lakes_df.columns:
+        if lakes_df[c].dtype == 'object':
+            analysis['unique_values'][c] = lakes_df[c].value_counts().to_dict()
+    return analysis
+
 def create_lakes_visualization(lakes_df):
-    """
-    Створює візуалізації для даних лейків
-    """
     if lakes_df is None or lakes_df.empty:
         return None
-    
-    # Створюємо візуалізації
     charts = {}
-    
-    # 1. Кругова діаграма для статусу (якщо є колонка Status)
     if 'Status' in lakes_df.columns:
         status_counts = lakes_df['Status'].value_counts()
-        fig_pie = px.pie(
-            values=status_counts.values,
-            names=status_counts.index,
-            title="Розподіл лейків за статусом"
-        )
-        charts['status_pie'] = fig_pie
-    
-    # 2. Гістограма для частоти оновлень (якщо є колонка Update_Frequency)
+        charts['status_pie'] = px.pie(values=status_counts.values, names=status_counts.index,
+                                      title="Розподіл лейків за статусом")
     if 'Update_Frequency' in lakes_df.columns:
-        fig_bar = px.bar(
-            x=lakes_df['Update_Frequency'].value_counts().index,
-            y=lakes_df['Update_Frequency'].value_counts().values,
-            title="Частота оновлень лейків"
-        )
-        charts['frequency_bar'] = fig_bar
-    
-    # 3. Treemap для розподілу по робочих просторах (якщо є колонка Workspace)
+        freq = lakes_df['Update_Frequency'].value_counts()
+        charts['frequency_bar'] = px.bar(x=freq.index, y=freq.values, title="Частота оновлень лейків")
     if 'Workspace' in lakes_df.columns:
-        fig_treemap = px.treemap(
-            lakes_df,
-            path=['Workspace'],
-            title="Розподіл лейків по робочих просторах"
-        )
-        charts['workspace_treemap'] = fig_treemap
-    
+        charts['workspace_treemap'] = px.treemap(lakes_df, path=['Workspace'], title="Розподіл лейків по робочих просторах")
     return charts
 
-def create_lake_details_card(lake_row):
-    """
-    Створює детальну картку для конкретного лейка
-    """
+def create_lake_details_card(lake_row: pd.Series):
     if lake_row is None or lake_row.empty:
         return "Немає даних про лейк"
-    
-    # Створюємо HTML картку з інформацією
-    card_html = """
+    card_html = f"""
     <div style="
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 20px;
-        border-radius: 10px;
-        color: white;
-        margin: 10px 0;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 20px; border-radius: 10px; color: white; margin: 10px 0;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     ">
-        <h3 style="margin: 0 0 15px 0; color: white;">🏞️ {lake_name}</h3>
-    """.format(lake_name=lake_row.get('LakeHouse', 'Невідомий лейк'))
-    
-    # Додаємо інформацію з усіх доступних колонок
+        <h3 style="margin: 0 0 15px 0; color: white;">🏞️ {lake_row.get('LakeHouse', 'Невідомий лейк')}</h3>
+    """
     for col in lake_row.index:
-        if pd.notna(lake_row[col]) and col not in ['LakeHouse', 'Folder', 'Element', 'Загальна інформація про лейк', 'Внесення змін']: # Виключаємо вже використані або спеціальні колонки
-            value = lake_row[col]
-            # Перекладаємо назви колонок для відображення
-            display_col_name = {
-                'Type': 'Тип',
-                'Опис': 'Опис',
-                'Оновлення': 'Оновлення',
-                'Особливості': 'Особливості',
-            }.get(col, col) # Якщо немає перекладу, використовуємо оригінальну назву
-            card_html += f"<p style=\"margin: 5px 0;\"><strong>{display_col_name}:</strong> {value}</p>"
-    
+        if pd.notna(lake_row[col]) and col not in ['LakeHouse', 'Folder', 'Element', 'Загальна інформація про лейк', 'Внесення змін']:
+            display_col_name = {'Type': 'Тип', 'Опис': 'Опис', 'Оновлення': 'Оновлення', 'Особливості': 'Особливості'}.get(col, col)
+            card_html += f'<p style="margin:5px 0;"><strong>{display_col_name}:</strong> {lake_row[col]}</p>'
     card_html += "</div>"
     return card_html
 
+# ----------------- Чтение из Google Sheets (CSV) -----------------
+def load_from_google_sheets():
+    try:
+        lakes_df = pd.read_csv(GOOGLE_SHEETS_URL_LAKES)
+        try:
+            reports_df = pd.read_csv(GOOGLE_SHEETS_URL_REPORTS)
+        except Exception:
+            reports_df = pd.DataFrame()
+        lakes_names = list(lakes_df['LakeHouse'].dropna()) if 'LakeHouse' in lakes_df.columns else list(lakes_df.iloc[:,0].dropna())
+        reports_names = list(reports_df.iloc[:,0].dropna()) if not reports_df.empty else []
+        return lakes_names, reports_names, lakes_df, reports_df
+    except Exception as e:
+        st.error(f"❌ Помилка завантаження з Google Sheets (читання): {e}")
+        return [], [], None, None
+
+# ----------------- ЗАПИС в Google Sheets (исправленный) -----------------
+def _get_gspread_client():
+    """
+    1) пробуем st.secrets['gcp_service_account'] (dict или JSON-строка)
+    2) иначе файл service_account_credentials.json (рядом со скриптом или в домашней папке)
+    """
+    if not GOOGLE_SHEETS_AVAILABLE:
+        raise RuntimeError(f"gspread/google-auth недоступны: {GS_IMPORT_ERROR}")
+
+    scopes = ["https://www.googleapis.com/auth/spreadsheets",
+              "https://www.googleapis.com/auth/drive"]
+
+    # через st.secrets (рекомендовано для Streamlit Cloud)
+    if "gcp_service_account" in st.secrets:
+        sa_info = st.secrets["gcp_service_account"]
+        if isinstance(sa_info, str):
+            sa_info = json.loads(sa_info)
+        creds = Credentials.from_service_account_info(sa_info, scopes=scopes)
+        return gspread.authorize(creds)
+
+    # файл JSON
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(here, "service_account_credentials.json"),
+        os.path.join(os.path.expanduser("~"), "service_account_credentials.json")
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            creds = Credentials.from_service_account_file(path, scopes=scopes)
+            return gspread.authorize(creds)
+
+    raise FileNotFoundError("Не найден ключ сервис-аккаунта: положи JSON в st.secrets['gcp_service_account'] "
+                            "или файл service_account_credentials.json рядом со скриптом/в домашней папке.")
+
+def _ensure_worksheet(sh, title, rows=1000, cols=50):
+    try:
+        return sh.worksheet(title)
+    except gspread.WorksheetNotFound:
+        return sh.add_worksheet(title=title, rows=rows, cols=cols)
+
+def _update_sheet_with_dataframe(ws, df: pd.DataFrame):
+    if df is None or df.empty:
+        ws.clear()
+        return
+    # значения: заголовки + строки; приведение NaN к пустым строкам
+    values = [df.columns.tolist()] + df.fillna("").astype(str).values.tolist()
+    last_row = len(values)
+    last_col = len(values[0]) if values else 1
+    end_a1 = rowcol_to_a1(last_row, last_col)   # корректно и после 'Z'
+    ws.clear()
+    ws.update(f"A1:{end_a1}", values, value_input_option="RAW")
+
+def save_to_google_sheets(df: pd.DataFrame, reports_table: pd.DataFrame | None = None) -> bool:
+    try:
+        gc = _get_gspread_client()
+        sh = gc.open_by_key(GOOGLE_SHEETS_ID)
+
+        # ВАЖНО: поделись таблицей с client_email сервис-аккаунта (Editor)!
+        lakes_ws = _ensure_worksheet(sh, "Lakes", rows=max(1000, len(df)+10), cols=max(20, len(df.columns)+2))
+        _update_sheet_with_dataframe(lakes_ws, df)
+
+        if reports_table is not None and not reports_table.empty:
+            reports_ws = _ensure_worksheet(sh, "Reports",
+                                           rows=max(1000, len(reports_table)+10),
+                                           cols=max(20, len(reports_table.columns)+2))
+            _update_sheet_with_dataframe(reports_ws, reports_table)
+
+        st.success("✅ Дані успішно збережено в Google Sheets!")
+        return True
+
+    except gspread.exceptions.APIError as api_err:
+        st.error(f"❌ Google API error: {api_err}")
+        st.info("🔎 Перевір: 1) сервіс-акаунт має доступ (Editor) до таблиці; 2) ID таблиці вірний; 3) назви листів 'Lakes'/'Reports'.")
+        return False
+    except FileNotFoundError as cred_err:
+        st.error(f"❌ Креденшіали: {cred_err}")
+        return False
+    except Exception as e:
+        st.error(f"❌ Несподівана помилка запису в Google Sheets: {e}")
+        return False
+
 # ==================== НАСТРОЙКИ СТОРІНКИ ====================
-st.set_page_config(
-    page_title="Knowledge Transfer App",
-    page_icon="🧠",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Knowledge Transfer App", page_icon="🧠", layout="wide", initial_sidebar_state="expanded")
 
 # ==================== НАВІГАЦІЯ ====================
 st.sidebar.title("🗂️ Навігація")
 st.sidebar.markdown("### Оберіть розділ:")
-
-section = st.sidebar.radio(
-    "",
-    ["🏠 Головна", 
-     "💧 Оновлення LakeHouses", 
-     "📊 Оновлення PowerBI Report",
-     "✏️ Редагування даних",
-     "📞 Контакти та ресурси"]
-)
-
+section = st.sidebar.radio("", ["🏠 Головна", "💧 Оновлення LakeHouses", "📊 Оновлення PowerBI Report", "✏️ Редагування даних", "📞 Контакти та ресурси"])
 st.sidebar.markdown("---")
 st.sidebar.info(f"📅 Останнє оновлення:\n{datetime.now().strftime('%d.%m.%Y')}")
 
-# Перевіряємо чи є credentials файл
-CREDENTIALS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "service_account_credentials.json")
-if not os.path.exists(CREDENTIALS_FILE):
-    st.sidebar.markdown("---")
-    st.sidebar.warning("⚠️ Google Sheets credentials")
-    st.sidebar.markdown("Для запису в Google Sheets потрібен credentials файл.")
-    uploaded_credentials = st.sidebar.file_uploader("Завантажте credentials.json", type=['json'], key='credentials_upload')
-    if uploaded_credentials is not None:
-        # Зберігаємо файл
-        with open(CREDENTIALS_FILE, "wb") as f:
-            f.write(uploaded_credentials.getbuffer())
-        st.sidebar.success("✅ Credentials завантажено!")
-        st.rerun()
+# Подсказка по кредам (если нет st.secrets и файла)
+if not ("gcp_service_account" in st.secrets):
+    CREDENTIALS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "service_account_credentials.json")
+    if not os.path.exists(CREDENTIALS_FILE):
+        st.sidebar.markdown("---")
+        st.sidebar.warning("⚠️ Google Sheets credentials не знайдено")
+        uploaded_credentials = st.sidebar.file_uploader("Завантажте service_account_credentials.json", type=['json'], key='credentials_upload')
+        if uploaded_credentials is not None:
+            with open(CREDENTIALS_FILE, "wb") as f:
+                f.write(uploaded_credentials.getbuffer())
+            st.sidebar.success("✅ Credentials завантажено!")
+            st.rerun()
 
-# === ДИНАМИЧЕСКИЙ ЗАПРОС таблицы для Lakes & reports ===
-# Спочатку спробуємо завантажити з Google Sheets
+# === Загрузка данных: сперва Google Sheets (CSV), затем локальный fallback ===
 lakes, reports, lakes_table, reports_table = load_from_google_sheets()
 
 if lakes_table is not None and not lakes_table.empty:
     st.sidebar.success(f"✅ Дані завантажено з Google Sheets ({len(lakes_table)} рядків)")
-elif lakes_table is None or lakes_table.empty:
-    # Якщо Google Sheets не працює, спробуємо локальний файл
+else:
     if os.path.exists(EXCEL_FILE_PATH):
-        try:
-            lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
-            abs_path = os.path.abspath(EXCEL_FILE_PATH)
-            st.sidebar.info(f"📂 Використовую локальний файл: `{abs_path}`")
-        except Exception as e:
-            st.error(f"❌ Помилка при читанні локального файлу: {e}")
-            lakes, reports, lakes_table, reports_table = [], [], None, None
+        lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
+        st.sidebar.info(f"📂 Використовую локальний файл: `{os.path.abspath(EXCEL_FILE_PATH)}`")
     else:
-        # Якщо файл не знайдено, пропонуємо завантажити вручну
-        st.warning("⚠️ Файл LakeHouse.xlsx не знайдено. Будь ласка, завантажте файл:")
+        st.warning("⚠️ Файл LakeHouse.xlsx не знайдено. Завантажте Excel файл:")
         uploaded_file = st.file_uploader("Завантажте Excel файл", type=['xlsx', 'xls'])
-        
         if uploaded_file is not None:
-            # Зберігаємо завантажений файл
             with open(EXCEL_FILE_PATH, "wb") as f:
                 f.write(uploaded_file.getbuffer())
             st.success("✅ Файл завантажено! Оновлюємо дані...")
             st.cache_data.clear()
             lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
-            abs_path = os.path.abspath(EXCEL_FILE_PATH)
-            st.sidebar.info(f"📂 Локальний файл: `{abs_path}`")
+            st.sidebar.info(f"📂 Локальний файл: `{os.path.abspath(EXCEL_FILE_PATH)}`")
         else:
-            # Показуємо заглушку
             lakes, reports, lakes_table, reports_table = [], [], None, None
-            st.info("👆 Завантажте Excel файл для початку роботи")
+            st.info("👆 Завантажте Excel файл або підключіть Google Sheets у сайдбарі")
 
 # ==================== ГОЛОВНА СТОРІНКА ====================
 if section == "🏠 Головна":
     st.header("Вітаємо! 👋")
-    st.markdown("""
-    Ця база знань містить всю необхідну інформацію для підтримки та оновлення 
-    наших LakeHouses та Power BI Reports.
+    st.markdown(f"""
+    Ця база знань містить інформацію для підтримки та оновлення наших LakeHouses та Power BI Reports.
 
-    **⚡️ Тепер список лейків і звітів зчитується з таблиці Excel**  
-    Можна легко коригувати склад без зміни коду!
-    
-    ### 📝 Як оновити дані:
-    1. **Перейдіть в розділ "Редагування даних"** (в меню зліва)
-    2. **Редагуйте дані прямо в таблиці** - зміни зберігаються автоматично
-    3. **Додавайте нові записи** через форму
-    4. **Зміни відображаються** миттєво для всіх користувачів
-    
-    **Excel файл:** `{}`  
-    **Повний шлях:** `{}`  
-    """.format(EXCEL_FILE_PATH, os.path.abspath(EXCEL_FILE_PATH)))
+    **Джерело даних:** Google Sheets (лист *Lakes*) з резервом у локальний Excel.
+
+    **Excel файл (локальний резерв):** `{EXCEL_FILE_PATH}`  
+    **Повний шлях:** `{os.path.abspath(EXCEL_FILE_PATH)}`
+    """)
     col1, col2 = st.columns(2)
-    with col1:
-        st.metric("🏞️ Data Lakes", len(lakes) if lakes else 0)
-    with col2:
-        st.metric("📊 Power BI звіти", len(reports) if reports else 0)
+    with col1: st.metric("🏞️ Data Lakes", len(lakes) if lakes else 0)
+    with col2: st.metric("📊 Power BI звіти", len(reports) if reports else 0)
 
 # ==================== ОНОВЛЕННЯ DATA LAKES ====================
 elif section == "💧 Оновлення LakeHouses":
     st.header("💧 Інструкції по оновленню LakeHouses")
-    
-    # Аналіз даних буде показано після вибору лейка
-    
-    # Отримуємо унікальні назви лейків (без дублювання)
     unique_lakes = []
     if lakes_table is not None and not lakes_table.empty:
-        # Шукаємо колонку з назвами лейків
-        name_columns = ['LakeHouse', 'name', 'Name', 'назва', 'Назва', 'lake_name', 'Lake Name', 'Lakehouse']
-        name_col = None
-        for col in name_columns:
+        for col in ['LakeHouse', 'name', 'Name', 'назва', 'Назва', 'lake_name', 'Lake Name', 'Lakehouse']:
             if col in lakes_table.columns:
-                name_col = col
+                unique_lakes = list(lakes_table[col].dropna().unique())
                 break
-        
-        if name_col:
-            unique_lakes = list(lakes_table[name_col].dropna().unique())
-        else:
-            unique_lakes = list(lakes_table.iloc[:, 0].dropna().unique())
-    
-    # Додаємо опції для вибору
+        if not unique_lakes:
+            unique_lakes = list(lakes_table.iloc[:,0].dropna().unique())
+
     lake_select_options = ["Всі лейки"] + unique_lakes + ["📊 Аналітика та візуалізація"]
-    
-    lake_name = st.selectbox(
-        "Оберіть Data Lake:",
-        lake_select_options
-    )
-    
+    lake_name = st.selectbox("Оберіть Data Lake:", lake_select_options)
+
     if lake_name == "Всі лейки":
         st.info("👈 Оберіть конкретний лейк зі списку вище")
-        
-        # Показуємо тільки унікальні лейки з колонки LakeHouse
-        if lakes_table is not None and not lakes_table.empty:
-            # Отримуємо унікальні значення з колонки LakeHouse
-            unique_lakes = lakes_table['LakeHouse'].dropna().unique()
-            
-            # Показуємо метрику тільки для кількості унікальних лейків
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("🏞️ Унікальних лейків", len(unique_lakes))
-            with col2:
-                st.metric("", "")  # Порожня картка
-            with col3:
-                st.metric("", "")  # Порожня картка
-            with col4:
-                st.metric("", "")  # Порожня картка
-            
+        if lakes_table is not None and not lakes_table.empty and 'LakeHouse' in lakes_table.columns:
+            unique_lakes_vals = lakes_table['LakeHouse'].dropna().unique()
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("🏞️ Унікальних лейків", len(unique_lakes_vals))
             st.subheader("📋 Список всіх Data Lakes")
-            
-            # Створюємо таблицю тільки з 2 колонками
-            if 'LakeHouse' in lakes_table.columns and 'Загальна інформація про лейк' in lakes_table.columns:
-                # Групуємо по LakeHouse та беремо перший запис для кожної групи
-                summary_table = lakes_table.groupby('LakeHouse').first().reset_index()
-                
-                # Показуємо тільки потрібні колонки
-                display_columns = ['LakeHouse', 'Загальна інформація про лейк']
-                summary_display = summary_table[display_columns]
-                
-                st.dataframe(
-                    summary_display, 
-                    use_container_width=True,
-                    hide_index=True
-                )
-                
-                # Додаємо кнопку для експорту
-                csv = summary_display.to_csv(index=False)
-                st.download_button(
-                    label="📥 Завантажити CSV",
-                    data=csv,
-                    file_name=f"lakes_summary_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv"
-                )
+            if 'Загальна інформація про лейк' in lakes_table.columns:
+                summary = lakes_table.groupby('LakeHouse').first().reset_index()
+                st.dataframe(summary[['LakeHouse','Загальна інформація про лейк']], use_container_width=True, hide_index=True)
             else:
-                st.warning("⚠️ Не знайдено колонки 'LakeHouse' або 'Загальна інформація про лейк'")
+                st.dataframe(lakes_table[['LakeHouse']], use_container_width=True, hide_index=True)
         else:
-            st.warning("Список лейків порожній у файлі Excel!")
-    
+            st.warning("Список лейків порожній або відсутня колонка 'LakeHouse'.")
     elif lake_name == "📊 Аналітика та візуалізація":
         st.subheader("📊 Аналітика та візуалізація лейків")
-        
         if lakes_table is not None and not lakes_table.empty:
-            # Показуємо аналіз даних
             analysis = analyze_lakes_data(lakes_table)
-            
-            # Показуємо загальну статистику
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("🏞️ Всього лейків", analysis['total_lakes'])
-            with col2:
-                st.metric("📊 Колонок даних", len(analysis['columns']))
-            with col3:
-                missing_total = sum(analysis['missing_data'].values())
-                st.metric("⚠️ Пропущених значень", missing_total)
-            with col4:
-                st.metric("📅 Останнє оновлення", datetime.now().strftime('%d.%m'))
-            
-            # Створюємо візуалізації
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("🏞️ Всього лейків", analysis['total_lakes'])
+            c2.metric("📊 Колонок даних", len(analysis['columns']))
+            c3.metric("⚠️ Пропущених значень", sum(analysis['missing_data'].values()))
+            c4.metric("📅 Останнє оновлення", datetime.now().strftime('%d.%m'))
             charts = create_lakes_visualization(lakes_table)
-            
             if charts:
-                st.subheader("📈 Візуалізації")
-                
-                # Показуємо доступні діаграми
-                for chart_name, chart in charts.items():
-                    if chart_name == 'status_pie':
-                        st.plotly_chart(chart, use_container_width=True)
-                    elif chart_name == 'frequency_bar':
-                        st.plotly_chart(chart, use_container_width=True)
-                    elif chart_name == 'workspace_treemap':
-                        st.plotly_chart(chart, use_container_width=True)
-            
-            # Детальний аналіз
+                for chart in charts.values():
+                    st.plotly_chart(chart, use_container_width=True)
             st.subheader("🔍 Детальний аналіз")
-            
-            # Аналіз пропущених даних
-            if any(analysis['missing_data'].values()):
-                st.subheader("⚠️ Пропущені дані")
-                missing_df = pd.DataFrame(list(analysis['missing_data'].items()), columns=['Колонка', 'Пропущено'])
-                missing_df = missing_df[missing_df['Пропущено'] > 0]
-                if not missing_df.empty:
-                    st.dataframe(missing_df, use_container_width=True)
-                else:
-                    st.success("✅ Пропущених даних немає!")
-            
-            # Аналіз унікальних значень
-            if analysis['unique_values']:
-                st.subheader("📊 Унікальні значення")
-                for col, values in analysis['unique_values'].items():
-                    if values:
-                        st.write(f"**{col}:**")
-                        values_df = pd.DataFrame(list(values.items()), columns=['Значення', 'Кількість'])
-                        st.dataframe(values_df, use_container_width=True)
+            missing_df = pd.DataFrame(list(analysis['missing_data'].items()), columns=['Колонка','Пропущено'])
+            missing_df = missing_df[missing_df['Пропущено'] > 0]
+            if not missing_df.empty: st.dataframe(missing_df, use_container_width=True)
+            else: st.success("✅ Пропущених даних немає!")
         else:
             st.warning("Немає даних для аналізу!")
-    
     else:
-        # Детальна інструкція для конкретного lake
         if lakes_table is not None and not lakes_table.empty:
-            # Фільтруємо дані для вибраного лейка
             lake_data = None
-            
-            # Шукаємо колонку з назвами лейків
-            name_columns = ['LakeHouse', 'name', 'Name', 'назва', 'Назва', 'lake_name', 'Lake Name', 'Lakehouse']
-            name_col = None
-            for col in name_columns:
-                if col in lakes_table.columns:
-                    if lake_name in lakes_table[col].values:
-                        name_col = col
-                        lake_data = lakes_table[lakes_table[col] == lake_name]
-                        break
-            
-            # Якщо не знайшли за назвою, але є тільки один унікальний лейк - використаємо всі дані
-            if lake_data is None or lake_data.empty:
-                # Перевіряємо, чи є тільки один унікальний лейк
-                unique_lakes = []
-                for col in name_columns:
-                    if col in lakes_table.columns:
-                        unique_lakes = list(lakes_table[col].dropna().unique())
-                        if len(unique_lakes) == 1:
-                            lake_data = lakes_table
-                            st.info(f"💡 Використовуємо єдиний лейк: {unique_lakes[0]}")
-                            break
-            
+            for col in ['LakeHouse', 'name', 'Name', 'назва', 'Назва', 'lake_name', 'Lake Name', 'Lakehouse']:
+                if col in lakes_table.columns and lake_name in lakes_table[col].values:
+                    lake_data = lakes_table[lakes_table[col] == lake_name]
+                    break
+            if (lake_data is None or lake_data.empty) and 'LakeHouse' in lakes_table.columns:
+                uniq = lakes_table['LakeHouse'].dropna().unique()
+                if len(uniq) == 1:
+                    lake_data = lakes_table
+                    st.info(f"💡 Використовуємо єдиний лейк: {uniq[0]}")
             if lake_data is not None and not lake_data.empty:
                 st.success(f"🏞️ Вибрано лейк: **{lake_name}**")
-                
-                # Показуємо аналіз даних для конкретного лейка
-                if lakes_table is not None and not lakes_table.empty:
-                    # Рахуємо унікальні лейки з колонки LakeHouse
-                    unique_lakes_count = lakes_table['LakeHouse'].nunique()
-                    
-                    # Рахуємо унікальні елементи з колонки Element
-                    unique_elements_count = lakes_table['Element'].nunique() if 'Element' in lakes_table.columns else 0
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("🏞️ Всього лейків", unique_lakes_count)
-                    with col2:
-                        st.metric("🧩 Кількість елементів", unique_elements_count)
-                
-                # Показуємо загальну інформацію про лейк з колонки "Загальна інформація про лейк"
-                st.subheader("ℹ️ Загальна інформація про лейк")
                 if 'Загальна інформація про лейк' in lake_data.columns and pd.notna(lake_data['Загальна інформація про лейк'].iloc[0]):
+                    st.subheader("ℹ️ Загальна інформація про лейк")
                     st.info(lake_data['Загальна інформація про лейк'].iloc[0])
-                else:
-                    st.info("Загальна інформація про лейк не надана")
-                
-                # Показуємо структуру лейка тільки якщо є колонка Folder
                 if 'Folder' in lake_data.columns:
                     st.subheader("📁 Структура лейка")
-                    
-                    # Отримуємо унікальні папки
                     unique_folders = lake_data['Folder'].dropna().unique()
-                    
                     if len(unique_folders) > 0:
                         st.write("**Доступні папки:**")
-                        
-                        # Створюємо кнопки для папок в колонках
                         cols = st.columns(min(3, len(unique_folders)))
                         selected_folder = None
-                        
                         for i, folder in enumerate(unique_folders):
                             with cols[i % 3]:
                                 if st.button(f"📂 {folder}", key=f"folder_{i}"):
                                     selected_folder = folder
-                        
-                        # Показуємо елементи вибраної папки
                         if selected_folder:
                             st.success(f"📂 Вибрано папку: **{selected_folder}**")
-                            
-                            # Фільтруємо дані по вибраній папці
                             folder_data = lake_data[lake_data['Folder'] == selected_folder]
-                            
-                            # Показуємо елементи папки (тільки стовпці з 3 по 8)
                             st.subheader("🧩 Елементи папки")
-                            
-                            # Вибираємо стовпці з 3 по 8 (індекси 2-7), але виключаємо URL
                             display_columns = folder_data.columns[2:8]
-                            # Виключаємо колонку URL з відображення, якщо вона є
                             if 'URL' in display_columns:
-                                display_columns = [col for col in display_columns if col != 'URL']
-                            
-                            if 'Element' in display_columns:
-                                # Перевіряємо, чи є колонка URL
-                                if 'URL' in folder_data.columns:
-                                    # Створюємо копію для модифікації
-                                    elements_df_display = folder_data[display_columns].copy()
-                                    
-                                    # Створюємо словник URL для кожного рядка (за індексом)
-                                    url_dict = {}
-                                    for idx, row in folder_data.iterrows():
-                                        url_value = row.get('URL', '')
-                                        if pd.notna(url_value) and url_value.strip():
-                                            url_dict[idx] = url_value.strip()
-                                    
-                                    # Перетворюємо стовпець 'Element' на клікабельні посилання
-                                    def create_link(row_data):
-                                        element_name = row_data['Element']
-                                        row_idx = row_data.name  # Отримуємо індекс рядка
-                                        
-                                        if row_idx in url_dict:
-                                            url = url_dict[row_idx]
-                                            return f'<a href="{url}" target="_blank" style="color: #1f77b4; text-decoration: underline;">{element_name}</a>'
-                                        else:
-                                            return element_name
-                                    
-                                    # Застосовуємо функцію до кожного рядка
-                                    elements_df_display['Element'] = elements_df_display.apply(create_link, axis=1)
-                                    
-                                    # Показуємо таблицю з HTML посиланнями
-                                    st.markdown(elements_df_display.to_html(escape=False), unsafe_allow_html=True)
-                                    
-                                    # Додаємо інформацію про кількість посилань
-                                    active_links = len(url_dict)
-                                    if active_links > 0:
-                                        st.info(f"🔗 {active_links} з {len(folder_data)} елементів мають активні посилання")
-                                else:
-                                    # Якщо немає колонки URL, показуємо звичайну таблицю
-                                    st.dataframe(folder_data[display_columns], use_container_width=True, hide_index=True)
-                                    st.warning("⚠️ Колонка 'URL' не знайдена. Показуємо звичайну таблицю.")
+                                display_columns = [c for c in display_columns if c != 'URL']
+                            if 'Element' in display_columns and 'URL' in folder_data.columns:
+                                elements_df_display = folder_data[display_columns].copy()
+                                url_dict = {idx: row.get('URL','').strip() for idx, row in folder_data.iterrows()
+                                            if pd.notna(row.get('URL','')) and str(row.get('URL','')).strip()}
+                                def create_link(row_data):
+                                    element_name = row_data['Element']
+                                    row_idx = row_data.name
+                                    if row_idx in url_dict:
+                                        url = url_dict[row_idx]
+                                        return f'<a href="{url}" target="_blank" style="color:#1f77b4;text-decoration:underline;">{element_name}</a>'
+                                    return element_name
+                                elements_df_display['Element'] = elements_df_display.apply(create_link, axis=1)
+                                st.markdown(elements_df_display.to_html(escape=False), unsafe_allow_html=True)
+                                st.info(f"🔗 Активних посилань: {len(url_dict)}")
                             else:
                                 st.dataframe(folder_data[display_columns], use_container_width=True, hide_index=True)
-                            
-                            # Додаємо секцію "Внесення змін"
                             st.subheader("📝 Внесення змін")
                             changes_col = 'Внесення змін'
                             if changes_col in folder_data.columns and pd.notna(folder_data[changes_col].iloc[0]):
                                 with st.expander("Показати деталі змін", expanded=True):
-                                    changes_text = folder_data[changes_col].iloc[0]
-                                    # Обробляємо текст з можливими зображеннями
-                                    process_text_with_images(changes_text)
+                                    process_text_with_images(folder_data[changes_col].iloc[0])
                             else:
                                 st.info("Немає інформації про внесення змін для цієї папки.")
                         else:
@@ -988,169 +462,124 @@ elif section == "💧 Оновлення LakeHouses":
                     else:
                         st.warning("⚠️ Папки не знайдено в даних")
                 else:
-                    # Якщо немає колонки Folder, показуємо всю таблицю
-                    st.warning("⚠️ Колонка 'Folder' не знайдена. Показуємо всі дані:")
+                    st.warning("⚠️ Колонка 'Folder' не знайдена. Показую всі дані:")
                     st.dataframe(lake_data, use_container_width=True, hide_index=True)
-                
-                # Секція "Внесення змін" тепер показується тільки після вибору папки
             else:
-                st.error(f"❌ Лейк '{lake_name}' не знайдено в базі даних!")
-                st.info("💡 Перевірте, чи правильно вказана назва лейка")
-                
-                # Показуємо доступні лейки для довідки
-                if unique_lakes:
-                    st.write("**Доступні лейки:**")
-                    for lake in unique_lakes:
-                        st.write(f"- {lake}")
+                st.error(f"❌ Лейк '{lake_name}' не знайдено.")
         else:
-            st.warning("⚠️ Дані лейків не завантажені. Перевірте файл Excel.")
+            st.warning("⚠️ Дані лейків не завантажені.")
 
 # ==================== РЕДАГУВАННЯ ДАНИХ ====================
 elif section == "✏️ Редагування даних":
     st.header("✏️ Редагування даних")
-    
     if lakes_table is not None and not lakes_table.empty:
         st.subheader("📊 Поточні дані")
-        st.info("💡 Редагуйте дані прямо в таблиці. Зміни зберігаються автоматично!")
-        
-        # Показуємо таблицю для редагування
+        st.info("💡 Редагуйте дані прямо в таблиці. Зміни будуть записані у Google Sheets; якщо не вдасться — у локальний Excel (резерв).")
+
         edited_df = st.data_editor(
-            lakes_table,
-            use_container_width=True,
-            num_rows="dynamic",
-            key="data_editor"
+            lakes_table, use_container_width=True, num_rows="dynamic", key="data_editor"
         )
-        
-        # Автоматичне збереження при змінах
+
         if not edited_df.equals(lakes_table):
-            # Спробуємо зберегти в Google Sheets
+            # пробуем Google Sheets
             if save_to_google_sheets(edited_df, reports_table):
                 st.cache_data.clear()
-                time.sleep(2)  # Затримка щоб побачити повідомлення
+                time.sleep(1.2)
                 st.rerun()
             else:
-                # Якщо не вдалося, зберігаємо локально
-                success, saved_file = save_data_to_excel(edited_df, EXCEL_FILE_PATH, 
-                                                         lakes_table=None, reports_table=reports_table)
-                if success:
+                # локальный резерв
+                ok, saved = save_data_to_excel(edited_df, EXCEL_FILE_PATH, reports_table)
+                if ok:
                     st.cache_data.clear()
-                    abs_path = os.path.abspath(saved_file)
-                    st.success(f"✅ Зміни збережено локально в: `{abs_path}`")
-                    time.sleep(2)  # Затримка щоб побачити повідомлення
+                    time.sleep(1.2)
                     st.rerun()
-        
-        # Кнопки для додаткових дій
+
         col1, col2 = st.columns(2)
-        
         with col1:
             if st.button("🔄 Оновити дані"):
                 st.cache_data.clear()
                 st.rerun()
-        
         with col2:
-            csv = edited_df.to_csv(index=False)
-            st.download_button(
-                label="📥 Завантажити CSV",
-                data=csv,
-                file_name=f"lakes_data_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv"
-            )
-        
-        # Додаємо новий рядок
+            csv = (lakes_table if lakes_table is not None else pd.DataFrame()).to_csv(index=False)
+            st.download_button("📥 Завантажити CSV", data=csv, file_name=f"lakes_data_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
+
         st.subheader("➕ Додати новий запис")
-        
         with st.form("add_new_record"):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                new_lakehouse = st.text_input("LakeHouse *", help="Обов'язкове поле")
-                new_folder = st.text_input("Folder *", help="Обов'язкове поле")
-                new_element = st.text_input("Element *", help="Обов'язкове поле")
+            c1, c2 = st.columns(2)
+            with c1:
+                new_lakehouse = st.text_input("LakeHouse *")
+                new_folder = st.text_input("Folder *")
+                new_element = st.text_input("Element *")
                 new_url = st.text_input("URL")
-            
-            with col2:
+            with c2:
                 new_info = st.text_area("Загальна інформація про лейк")
                 new_changes = st.text_area("Внесення змін")
-            
             if st.form_submit_button("➕ Додати запис"):
                 if new_lakehouse and new_folder and new_element:
                     new_row = {
                         'LakeHouse': new_lakehouse,
                         'Folder': new_folder,
                         'Element': new_element,
-                        'URL': new_url if new_url else '',
-                        'Загальна інформація про лейк': new_info if new_info else '',
-                        'Внесення змін': new_changes if new_changes else ''
+                        'URL': new_url or '',
+                        'Загальна інформація про лейк': new_info or '',
+                        'Внесення змін': new_changes or ''
                     }
-                    
-                    # Додаємо новий рядок
                     new_df = pd.concat([lakes_table, pd.DataFrame([new_row])], ignore_index=True)
-                    
-                    # Спробуємо зберегти в Google Sheets
+
                     if save_to_google_sheets(new_df, reports_table):
-                        # Якщо збереження в Google Sheets успішне, очищаємо кеш
                         st.cache_data.clear()
-                        time.sleep(2)  # Затримка щоб побачити повідомлення
+                        time.sleep(1.2)
                         st.rerun()
                     else:
-                        # Якщо не вдалося записати в Google Sheets, зберігаємо локально
-                        st.warning("⚠️ Неможливо записати в Google Sheets. Зберігаю локально як резервну копію.")
-                        success, saved_file = save_data_to_excel(new_df, EXCEL_FILE_PATH, 
-                                                                 lakes_table=None, reports_table=reports_table)
-                        if success:
+                        st.warning("⚠️ Google Sheets недоступний. Зберігаю локально як резервну копію.")
+                        ok, saved = save_data_to_excel(new_df, EXCEL_FILE_PATH, reports_table)
+                        if ok:
                             st.cache_data.clear()
-                            abs_path = os.path.abspath(saved_file)
-                            st.info(f"💾 Резервна копія збережена локально: `{abs_path}`")
-                            st.error("❌ **УВАГА:** Дані НЕ збережені в Google Sheets!")
-                            time.sleep(3)  # Більша затримка щоб побачити всі повідомлення
+                            time.sleep(1.2)
                             st.rerun()
                 else:
                     st.error("❌ Заповніть обов'язкові поля: LakeHouse, Folder, Element")
     else:
-        st.warning("⚠️ Немає даних для редагування. Спочатку завантажте Excel файл.")
+        st.warning("⚠️ Немає даних для редагування. Завантажте Excel або увімкніть Google Sheets.")
 
 # ==================== КОНТАКТИ ТА РЕСУРСИ ====================
 elif section == "📞 Контакти та ресурси":
     st.header("📞 Контакти та ресурси")
     st.subheader("👥 Наша команда")
-    
-    # Команда в одному блоці
     st.markdown("""
     ### 🏢 OurTeam
-    
+
     **Zhovtiuk Svitlana**  
     Керівник групи  
     📧 s.zhovtiuk@darnytsia.ua
-    
+
     **Filatova Oleksandra**  
     Менеджер з бізнес аналітики  
     📧 oleksandra.filatova@darnytsia.ua
-    
+
     **Bohdanyk Oleksandr**  
     Менеджер з бізнес аналітики  
     📧 o.bohdanyk@darnytsia.ua
-    
+
     **Taranenko Oleksandr**  
     Менеджер з бізнес аналітики  
     📧 o.taranenko@darnytsia.ua
     """)
-    
     st.subheader("🔗 Корисні посилання")
-    col1, col2 = st.columns(2)
-    with col1:
+    c1, c2 = st.columns(2)
+    with c1:
         st.markdown("""
         ### Внутрішні ресурси:
-        - [SharePoint команди](https://darnitsa.sharepoint.com)
+        - [SharePoint команди](https://darnytsia.sharepoint.com)
         - [Azure DevOps](https://dev.azure.com/darnitsa)
         - [Power BI Service](https://app.powerbi.com)
         """)
-    with col2:
+    with c2:
         st.markdown("""
         ### Зовнішні ресурси:
         - [Microsoft Learn](https://learn.microsoft.com)
         - [Power BI Community](https://community.powerbi.com)
         - [Streamlit Docs](https://docs.streamlit.io)
         """)
-    
 
-# ==================== КОНТАКТИ ====================
+# ----------------- конец файла -----------------
