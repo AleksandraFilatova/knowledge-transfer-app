@@ -458,9 +458,26 @@ if os.path.exists(EXCEL_FILE_PATH):
     abs_path = os.path.abspath(EXCEL_FILE_PATH)
     st.sidebar.success(f"📂 Файл: `{abs_path}`")
 else:
-    # Якщо файл не знайдено локально, спробуємо завантажити з OneDrive
-    st.info("🔄 Завантажую файл з OneDrive...")
-    if download_file_from_onedrive(ONEDRIVE_URL, EXCEL_FILE_PATH):
+    # Якщо файл не знайдено, спробуємо скопіювати з OneDrive через shutil
+    import shutil
+    onedrive_file_path = EXCEL_FILE_PATH  # Той самий шлях, бо файл вже синхронізований
+    
+    # Перевіряємо, чи файл існує в синхронізованій папці OneDrive
+    if os.path.exists(onedrive_file_path):
+        try:
+            st.info("📂 Знайдено файл в OneDrive папці")
+            lakes, reports, lakes_table, reports_table = load_lakes_and_reports(onedrive_file_path)
+            abs_path = os.path.abspath(onedrive_file_path)
+            st.sidebar.success(f"✅ Файл завантажено: `{abs_path}`")
+        except Exception as e:
+            st.error(f"❌ Помилка при читанні файлу: {e}")
+            # Створюємо новий файл
+            if create_default_excel_file(EXCEL_FILE_PATH):
+                lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
+                st.sidebar.success("✅ Створено новий файл")
+            else:
+                lakes, reports, lakes_table, reports_table = [], [], None, None
+    elif download_file_from_onedrive(ONEDRIVE_URL, EXCEL_FILE_PATH):
         lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
         abs_path = os.path.abspath(EXCEL_FILE_PATH)
         st.sidebar.success(f"✅ Файл завантажено з OneDrive: `{abs_path}`")
