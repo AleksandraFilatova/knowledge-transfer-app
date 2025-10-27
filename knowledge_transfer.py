@@ -318,15 +318,44 @@ def download_file_from_github(url, local_path):
 
 def save_to_google_sheets(df, reports_table=None):
     """
-    Зберігає дані в Google Sheets (для публічного файлу без авторизації - не працює)
+    Зберігає дані в Google Sheets через gspread
     """
     try:
-        st.info("🔄 Зберігаю в Google Sheets...")
-        st.warning("⚠️ Автоматичне збереження в Google Sheets потребує налаштування авторизації.")
-        st.info("💡 Зміни збережені локально. Оновіть Google Sheets вручну.")
-        return False
+        if not GOOGLE_SHEETS_AVAILABLE:
+            st.warning("⚠️ Бібліотека gspread не встановлена")
+            return False
+        
+        st.info("🔄 Спроба збереження в Google Sheets...")
+        
+        # Варіант 1: Якщо файл публічний, спробуємо отримати доступ
+        try:
+            # Відкриваємо Google Sheets (потрібен повний URL з share link)
+            # Спочатку перевіряємо, чи файл публічний
+            gc = gspread.service_account()  # Потрібен credentials файл
+            sh = gc.open_by_key(GOOGLE_SHEETS_ID)
+            
+            # Оновлюємо лист Lakes
+            worksheet = sh.worksheet("Lakes")
+            worksheet.clear()
+            worksheet.update([df.columns.values.tolist()] + df.values.tolist())
+            
+            # Оновлюємо лист Reports, якщо є дані
+            if reports_table is not None and not reports_table.empty:
+                reports_worksheet = sh.worksheet("Reports")
+                reports_worksheet.clear()
+                reports_worksheet.update([reports_table.columns.values.tolist()] + reports_table.values.tolist())
+            
+            st.success("✅ Дані успішно збережено в Google Sheets!")
+            return True
+            
+        except Exception as gs_error:
+            # Якщо не вдалося через API, показуємо повідомлення
+            st.warning(f"⚠️ Автоматичне збереження в Google Sheets неможливе: {gs_error}")
+            st.info("💡 **Альтернатива:** Завантажте CSV файл через кнопку нижче і імпортуйте в Google Sheets")
+            return False
+            
     except Exception as e:
-        st.error(f"❌ Помилка збереження в Google Sheets: {e}")
+        st.error(f"❌ Помилка: {e}")
         return False
 
 def save_data_to_excel(df, filename, lakes_table=None, reports_table=None):
@@ -867,15 +896,19 @@ elif section == "✏️ Редагування даних":
         
         # Автоматичне збереження при змінах
         if not edited_df.equals(lakes_table):
-            success, saved_file = save_data_to_excel(edited_df, EXCEL_FILE_PATH, 
-                                                     lakes_table=None, reports_table=reports_table)
-            if success:
-                # Очищуємо кеш після збереження
+            # Спробуємо зберегти в Google Sheets
+            if save_to_google_sheets(edited_df, reports_table):
                 st.cache_data.clear()
-                abs_path = os.path.abspath(saved_file)
-                st.success(f"✅ Зміни збережено локально в: `{abs_path}`")
-                st.info("💡 **Важливо:** Для синхронізації з іншими користувачами завантажте оновлений файл на GitHub вручну")
                 st.rerun()
+            else:
+                # Якщо не вдалося, зберігаємо локально
+                success, saved_file = save_data_to_excel(edited_df, EXCEL_FILE_PATH, 
+                                                         lakes_table=None, reports_table=reports_table)
+                if success:
+                    st.cache_data.clear()
+                    abs_path = os.path.abspath(saved_file)
+                    st.success(f"✅ Зміни збережено локально в: `{abs_path}`")
+                    st.rerun()
         
         # Кнопки для додаткових дій
         col1, col2 = st.columns(2)
@@ -924,14 +957,20 @@ elif section == "✏️ Редагування даних":
                     # Додаємо новий рядок
                     new_df = pd.concat([lakes_table, pd.DataFrame([new_row])], ignore_index=True)
                     
-                    success, saved_file = save_data_to_excel(new_df, EXCEL_FILE_PATH, 
-                                                             lakes_table=None, reports_table=reports_table)
-                    if success:
-                        # Очищуємо кеш, щоб після перезапуску завантажити нові дані
+                    # Спробуємо зберегти в Google Sheets
+                    if save_to_google_sheets(new_df, reports_table):
+                        # Якщо збереження в Google Sheets успішне, очищаємо кеш
                         st.cache_data.clear()
-                        abs_path = os.path.abspath(saved_file)
-                        st.success(f"✅ Новий запис додано та збережено в: `{abs_path}`")
                         st.rerun()
+                    else:
+                        # Якщо не вдалося, зберігаємо локально
+                        success, saved_file = save_data_to_excel(new_df, EXCEL_FILE_PATH, 
+                                                                 lakes_table=None, reports_table=reports_table)
+                        if success:
+                            st.cache_data.clear()
+                            abs_path = os.path.abspath(saved_file)
+                            st.success(f"✅ Новий запис додано локально в: `{abs_path}`")
+                            st.rerun()
                 else:
                     st.error("❌ Заповніть обов'язкові поля: LakeHouse, Folder, Element")
     else:
