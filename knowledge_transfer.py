@@ -8,6 +8,10 @@ from plotly.subplots import make_subplots
 from PIL import Image
 import base64
 import requests
+try:
+    from openpyxl import load_workbook
+except ImportError:
+    openpyxl = None
 
 # ==== CONFIG SECTION ====
 # Путь к Excel с лейками и звітами. Використовуємо абсолютний шлях до папки з кодом
@@ -202,12 +206,43 @@ def download_file_from_github(url, local_path):
     except Exception as e:
         return False
 
-def save_data_to_excel(df, filename):
+def save_data_to_excel(df, filename, lakes_table=None, reports_table=None):
     """
-    Зберігає DataFrame в Excel файл
+    Зберігає DataFrame в Excel файл з підтримкою множинних листів
     """
     try:
-        df.to_excel(filename, index=False)
+        # Відкриваємо існуючий файл, якщо він є
+        if os.path.exists(filename):
+            from openpyxl import load_workbook
+            try:
+                # Спробуємо зчитати існуючий файл
+                existing_df = pd.ExcelFile(filename)
+                
+                # Якщо в файлі є лист "Reports", зберігаємо його
+                if 'Reports' in existing_df.sheet_names and reports_table is not None:
+                    # Зберігаємо з обома листами
+                    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+                        df.to_excel(writer, sheet_name='Lakes', index=False)
+                        reports_table.to_excel(writer, sheet_name='Reports', index=False)
+                else:
+                    # Зберігаємо тільки оновлений лист
+                    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+                        df.to_excel(writer, sheet_name='Lakes', index=False)
+                        if reports_table is not None:
+                            reports_table.to_excel(writer, sheet_name='Reports', index=False)
+            except:
+                # Якщо не вдалося відкрити, просто перезапишемо
+                with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+                    df.to_excel(writer, sheet_name='Lakes', index=False)
+                    if reports_table is not None:
+                        reports_table.to_excel(writer, sheet_name='Reports', index=False)
+        else:
+            # Якщо файлу немає, створюємо новий
+            with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='Lakes', index=False)
+                if reports_table is not None:
+                    reports_table.to_excel(writer, sheet_name='Reports', index=False)
+        
         return True, filename
     except Exception as e:
         st.error(f"❌ Помилка при збереженні: {e}")
@@ -685,7 +720,8 @@ elif section == "✏️ Редагування даних":
         
         # Автоматичне збереження при змінах
         if not edited_df.equals(lakes_table):
-            success, saved_file = save_data_to_excel(edited_df, EXCEL_FILE_PATH)
+            success, saved_file = save_data_to_excel(edited_df, EXCEL_FILE_PATH, 
+                                                     lakes_table=None, reports_table=reports_table)
             if success:
                 # Очищуємо кеш після збереження
                 st.cache_data.clear()
@@ -741,7 +777,8 @@ elif section == "✏️ Редагування даних":
                     # Додаємо новий рядок
                     new_df = pd.concat([lakes_table, pd.DataFrame([new_row])], ignore_index=True)
                     
-                    success, saved_file = save_data_to_excel(new_df, EXCEL_FILE_PATH)
+                    success, saved_file = save_data_to_excel(new_df, EXCEL_FILE_PATH, 
+                                                             lakes_table=None, reports_table=reports_table)
                     if success:
                         # Очищуємо кеш, щоб після перезапуску завантажити нові дані
                         st.cache_data.clear()
