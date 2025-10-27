@@ -10,8 +10,9 @@ import base64
 import requests
 
 # ==== CONFIG SECTION ====
-# Путь к Excel с лейками и звітами. Для Streamlit Cloud використовуємо відносний шлях
-EXCEL_FILE_PATH = os.environ.get("KNOWLEDGE_TRANSFER_CONFIG_PATH", "LakeHouse.xlsx")  # Шлях до твого файлу
+# Путь к Excel с лейками и звітами. Використовуємо абсолютний шлях до папки з кодом
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+EXCEL_FILE_PATH = os.path.join(SCRIPT_DIR, "LakeHouse.xlsx")
 
 # GitHub URL для файлу (raw формат)
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/AleksandraFilatova/knowledge-transfer-app/main/LakeHouse.xlsx"
@@ -333,11 +334,11 @@ else:
         
         if uploaded_file is not None:
             # Зберігаємо завантажений файл
-            with open("LakeHouse.xlsx", "wb") as f:
+            with open(EXCEL_FILE_PATH, "wb") as f:
                 f.write(uploaded_file.getbuffer())
             st.success("✅ Файл завантажено! Оновлюємо дані...")
-            lakes, reports, lakes_table, reports_table = load_lakes_and_reports("LakeHouse.xlsx")
-            abs_path = os.path.abspath("LakeHouse.xlsx")
+            lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
+            abs_path = os.path.abspath(EXCEL_FILE_PATH)
             st.sidebar.info(f"📂 Локальний файл: `{abs_path}`")
         else:
             # Показуємо заглушку
@@ -361,7 +362,8 @@ if section == "🏠 Головна":
     4. **Зміни відображаються** миттєво для всіх користувачів
     
     **Excel файл:** `{}`  
-    """.format(EXCEL_FILE_PATH))
+    **Повний шлях:** `{}`  
+    """.format(EXCEL_FILE_PATH, os.path.abspath(EXCEL_FILE_PATH)))
     col1, col2 = st.columns(2)
     with col1:
         st.metric("🏞️ Data Lakes", len(lakes) if lakes else 0)
@@ -683,7 +685,7 @@ elif section == "✏️ Редагування даних":
         
         # Автоматичне збереження при змінах
         if not edited_df.equals(lakes_table):
-            success, saved_file = save_data_to_excel(edited_df, "LakeHouse.xlsx")
+            success, saved_file = save_data_to_excel(edited_df, EXCEL_FILE_PATH)
             if success:
                 # Очищуємо кеш після збереження
                 st.cache_data.clear()
@@ -739,7 +741,7 @@ elif section == "✏️ Редагування даних":
                     # Додаємо новий рядок
                     new_df = pd.concat([lakes_table, pd.DataFrame([new_row])], ignore_index=True)
                     
-                    success, saved_file = save_data_to_excel(new_df, "LakeHouse.xlsx")
+                    success, saved_file = save_data_to_excel(new_df, EXCEL_FILE_PATH)
                     if success:
                         # Очищуємо кеш, щоб після перезапуску завантажити нові дані
                         st.cache_data.clear()
