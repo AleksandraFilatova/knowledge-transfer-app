@@ -22,7 +22,7 @@ EXCEL_FILE_PATH = os.path.join(SCRIPT_DIR, "LakeHouse.xlsx")
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/AleksandraFilatova/knowledge-transfer-app/main/LakeHouse.xlsx"
 
 # OneDrive URL як резервне джерело
-ONEDRIVE_URL = "https://pfdarnitsa-my.sharepoint.com/personal/analytics_darnitsa_ua/Documents/%D0%91%D0%BB%D0%BE%D0%BA%D0%BD%D0%BE%D1%82%D0%B8/Streamlit/LakeHouse.xlsx?web=1"
+ONEDRIVE_URL = "https://pfdarnitsa-my.sharepoint.com/personal/analytics_darnitsa_ua/Documents/%D0%91%D0%BB%D0%BE%D0%BA%D0%BD%D0%BE%D1%82%D0%B8/Streamlit/LakeHouse.xlsx"
 
 # ======= Функція для читання інформації з Excel =========
 @st.cache_data(ttl=300)
