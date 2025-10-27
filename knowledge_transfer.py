@@ -353,8 +353,21 @@ def save_to_google_sheets(df, reports_table=None):
             st.info(f"📊 Відкриваю Google Sheets з ID: {GOOGLE_SHEETS_ID}")
             sh = gc.open_by_key(GOOGLE_SHEETS_ID)
             
+            # Перевіряємо доступ до таблиці
+            st.info(f"📋 Назва таблиці: {sh.title}")
+            st.info(f"🔗 URL таблиці: {sh.url}")
+            
+            # Перевіряємо існуючі листи
+            worksheets = sh.worksheets()
+            worksheet_names = [ws.title for ws in worksheets]
+            st.info(f"📄 Існуючі листи: {worksheet_names}")
+            
             # Оновлюємо лист Lakes
-            worksheet = sh.worksheet("Lakes")
+            try:
+                worksheet = sh.worksheet("Lakes")
+            except gspread.WorksheetNotFound:
+                # Якщо лист не існує, створюємо його
+                worksheet = sh.add_worksheet(title="Lakes", rows=1000, cols=20)
             
             # Підготовлюємо дані для запису
             data_to_write = [df.columns.values.tolist()] + df.values.tolist()
@@ -364,9 +377,12 @@ def save_to_google_sheets(df, reports_table=None):
             
             # Оновлюємо лист Reports, якщо є дані
             if reports_table is not None and not reports_table.empty:
-                reports_worksheet = sh.worksheet("Reports")
-                reports_data = [reports_table.columns.values.tolist()] + reports_table.values.tolist()
+                try:
+                    reports_worksheet = sh.worksheet("Reports")
+                except gspread.WorksheetNotFound:
+                    reports_worksheet = sh.add_worksheet(title="Reports", rows=1000, cols=20)
                 
+                reports_data = [reports_table.columns.values.tolist()] + reports_table.values.tolist()
                 reports_worksheet.update('A1', reports_data)
             
             st.success("✅ Дані успішно збережено в Google Sheets!")
