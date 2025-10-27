@@ -23,7 +23,7 @@ GOOGLE_SHEETS_ID = "1khEZV_BX5NALD-BEAT36L0h_3ulBHczb"
 # URL для експорту з Google Sheets (CSV формат для Lakes)
 GOOGLE_SHEETS_URL_LAKES = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_ID}/gviz/tq?tqx=out:csv&sheet=Lakes"
 # URL для експорту з Google Sheets (CSV формат для Reports)
-GOOGLE_SHEETS_URL_REPORTS = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_ID}/gviz/tq?tExcellent:csv&sheet=Reports"
+GOOGLE_SHEETS_URL_REPORTS = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_ID}/gviz/tq?tqx=out:csv&sheet=Reports"
 
 # GitHub URL для файлу (raw формат) - резервне джерело
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/AleksandraFilatova/knowledge-transfer-app/main/LakeHouse.xlsx"
@@ -424,30 +424,6 @@ section = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.info(f"📅 Останнє оновлення:\n{datetime.now().strftime('%d.%m.%Y')}")
 
-# Кнопка для відновлення файлу або створення нового
-st.sidebar.markdown("### 🔧 Управління файлом")
-if st.sidebar.button("🆕 Створити новий файл (очистити всі дані)"):
-    try:
-        # Видаляємо пошкоджений файл
-        if os.path.exists(EXCEL_FILE_PATH):
-            try:
-                os.remove(EXCEL_FILE_PATH)
-                st.sidebar.info("🗑️ Видалено пошкоджений файл")
-            except:
-                st.sidebar.warning("⚠️ Не вдалося видалити файл")
-        
-        # Створюємо новий файл
-        st.sidebar.info("📝 Створюю новий файл...")
-        if create_default_excel_file(EXCEL_FILE_PATH):
-            st.sidebar.success("✅ Створено новий файл! Тепер можна додавати дані.")
-            st.cache_data.clear()
-            st.rerun()
-        else:
-            st.sidebar.error("❌ Не вдалося створити файл")
-    except Exception as e:
-        st.sidebar.error(f"❌ Помилка: {e}")
-
-
 # === ДИНАМИЧЕСКИЙ ЗАПРОС таблицы Excel для Lakes & reports ===
 # Перевіряємо, чи файл існує локально
 if os.path.exists(EXCEL_FILE_PATH):
@@ -475,27 +451,17 @@ else:
                 st.sidebar.success("✅ Створено новий файл")
             else:
                 lakes, reports, lakes_table, reports_table = [], [], None, None
-    elif download_file_from_onedrive(ONEDRIVE_URL, EXCEL_FILE_PATH):
-        lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
-        abs_path = os.path.abspath(EXCEL_FILE_PATH)
-        st.sidebar.success(f"✅ Файл завантажено з OneDrive: `{abs_path}`")
     else:
-        # Якщо не вдалося завантажити з OneDrive, спробуємо GitHub
-        st.info("🔄 Спробую завантажити з GitHub...")
-        if download_file_from_github(GITHUB_RAW_URL, EXCEL_FILE_PATH):
-            lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
-            abs_path = os.path.abspath(EXCEL_FILE_PATH)
-            st.sidebar.success(f"✅ Файл завантажено з GitHub: `{abs_path}`")
-        else:
-            # Якщо не вдалося завантажити з GitHub, пропонуємо завантажити вручну
-            st.warning("⚠️ Файл LakeHouse.xlsx не знайдено. Будь ласка, завантажте файл:")
-            uploaded_file = st.file_uploader("Завантажте Excel файл", type=['xlsx', 'xls'])
+        # Якщо файл не знайдено, пропонуємо завантажити вручну
+        st.warning("⚠️ Файл LakeHouse.xlsx не знайдено. Будь ласка, завантажте файл:")
+        uploaded_file = st.file_uploader("Завантажте Excel файл", type=['xlsx', 'xls'])
         
         if uploaded_file is not None:
             # Зберігаємо завантажений файл
             with open(EXCEL_FILE_PATH, "wb") as f:
                 f.write(uploaded_file.getbuffer())
             st.success("✅ Файл завантажено! Оновлюємо дані...")
+            st.cache_data.clear()
             lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
             abs_path = os.path.abspath(EXCEL_FILE_PATH)
             st.sidebar.info(f"📂 Локальний файл: `{abs_path}`")
