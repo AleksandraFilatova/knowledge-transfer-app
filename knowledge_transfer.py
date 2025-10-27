@@ -295,7 +295,7 @@ st.set_page_config(page_title="Knowledge Transfer App", page_icon="🧠", layout
 # ==================== НАВІГАЦІЯ ====================
 st.sidebar.title("🗂️ Навігація")
 st.sidebar.markdown("### Оберіть розділ:")
-section = st.sidebar.radio("", ["🏠 Головна", "💧 Оновлення LakeHouses", "📊 Оновлення PowerBI Report", "✏️ Редагування даних", "📞 Контакти та ресурси"])
+section = st.sidebar.radio("", ["🏠 Головна", "💧 LakeHouses", "📊 PowerBI Report", "✏️ Редагування даних", "📞 Контакти та ресурси"])
 st.sidebar.markdown("---")
 st.sidebar.info(f"📅 Останнє оновлення:\n{datetime.now().strftime('%d.%m.%Y')}")
 
@@ -349,7 +349,7 @@ if section == "🏠 Головна":
     with col2: st.metric("📊 Power BI звіти", unique_reports_count)
 
 # ==================== ОНОВЛЕННЯ DATA LAKES ====================
-elif section == "💧 Оновлення LakeHouses":
+elif section == "💧 LakeHouses":
     st.header("💧 Інструкції по оновленню LakeHouses")
     unique_lakes = []
     if lakes_table is not None and not lakes_table.empty:
@@ -581,5 +581,6 @@ elif section == "📞 Контакти та ресурси":
         """)
 
 # ----------------- конец файла -----------------
+
 
 
