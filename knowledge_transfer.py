@@ -48,7 +48,7 @@ def load_lakes_and_reports(excel_path):
             lakes_df = pd.read_excel(xl, available_sheets[0])
         
         # Шукаємо лист зі звітами
-        report_sheet_names = ['Reports', 'reports', 'report', 'звіти', 'Power BI']
+        report_sheet_names = ['Reports']
         for sheet_name in report_sheet_names:
             if sheet_name in available_sheets:
                 reports_df = pd.read_excel(xl, sheet_name)
@@ -211,41 +211,62 @@ def save_data_to_excel(df, filename, lakes_table=None, reports_table=None):
     Зберігає DataFrame в Excel файл з підтримкою множинних листів
     """
     try:
+        st.info(f"🔄 Намагаюся зберегти файл: {filename}")
+        
         # Відкриваємо існуючий файл, якщо він є
         if os.path.exists(filename):
-            from openpyxl import load_workbook
+            st.info(f"📄 Файл існує, відкриваю...")
             try:
                 # Спробуємо зчитати існуючий файл
-                existing_df = pd.ExcelFile(filename)
+                existing_file = pd.ExcelFile(filename)
+                existing_sheets = existing_file.sheet_names
+                st.info(f"📊 Існуючі листи: {existing_sheets}")
                 
-                # Якщо в файлі є лист "Reports", зберігаємо його
-                if 'Reports' in existing_df.sheet_names and reports_table is not None:
-                    # Зберігаємо з обома листами
-                    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
-                        df.to_excel(writer, sheet_name='Lakes', index=False)
-                        reports_table.to_excel(writer, sheet_name='Reports', index=False)
-                else:
-                    # Зберігаємо тільки оновлений лист
-                    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
-                        df.to_excel(writer, sheet_name='Lakes', index=False)
-                        if reports_table is not None:
-                            reports_table.to_excel(writer, sheet_name='Reports', index=False)
-            except:
+                # Читаємо дані з листа Reports, якщо він існує
+                existing_reports = None
+                if 'Reports' in existing_sheets:
+                    existing_reports = pd.read_excel(filename, sheet_name='Reports')
+                    st.info(f"✅ Знайдено лист Reports з {len(existing_reports)} рядків")
+                
+                # Зберігаємо з обома листами
+                with pd.ExcelWriter(filename, engine='openpyxl', mode='w') as writer:
+                    df.to_excel(writer, sheet_name='Lakes', index=False, if_sheet_exists='replace')
+                    st.info(f"✅ Збережено лист Lakes з {len(df)} рядків")
+                    
+                    # Використовуємо існуючі дані Reports, якщо вони є
+                    if existing_reports is not None and not existing_reports.empty:
+                        existing_reports.to_excel(writer, sheet_name='Reports', index=False, if_sheet_exists='replace')
+                        st.info(f"✅ Збережено лист Reports з {len(existing_reports)} рядків")
+                    elif reports_table is not None and not reports_table.empty:
+                        reports_table.to_excel(writer, sheet_name='Reports', index=False, if_sheet_exists='replace')
+                        st.info(f"✅ Збережено новий лист Reports з {len(reports_table)} рядків")
+                        
+            except Exception as e:
+                st.warning(f"⚠️ Помилка при читанні існуючого файлу: {e}")
+                st.info("🔄 Спробую створити новий файл...")
                 # Якщо не вдалося відкрити, просто перезапишемо
-                with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+                with pd.ExcelWriter(filename, engine='openpyxl', mode='w') as writer:
                     df.to_excel(writer, sheet_name='Lakes', index=False)
-                    if reports_table is not None:
+                    if reports_table is not None and not reports_table.empty:
                         reports_table.to_excel(writer, sheet_name='Reports', index=False)
         else:
             # Якщо файлу немає, створюємо новий
-            with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+            st.info(f"📝 Файлу не існує, створюю новий...")
+            with pd.ExcelWriter(filename, engine='openpyxl', mode='w') as writer:
                 df.to_excel(writer, sheet_name='Lakes', index=False)
-                if reports_table is not None:
+                if reports_table is not None and not reports_table.empty:
                     reports_table.to_excel(writer, sheet_name='Reports', index=False)
         
+        st.success(f"✅ Файл успішно збережено: {os.path.abspath(filename)}")
         return True, filename
+    except PermissionError as e:
+        st.error(f"❌ Помилка доступу до файлу: {e}")
+        st.warning("💡 Можливо, файл відкритий в іншій програмі або синхронізується з OneDrive. Закрийте Excel і спробуйте ще раз.")
+        return False, None
     except Exception as e:
-        st.error(f"❌ Помилка при збереженні: {e}")
+        st.error(f"❌ Помилка при збереженні: {type(e).__name__}: {e}")
+        import traceback
+        st.code(traceback.format_exc())
         return False, None
 
 def create_lakes_visualization(lakes_df):
