@@ -8,6 +8,7 @@ from plotly.subplots import make_subplots
 from PIL import Image
 import base64
 import requests
+import time
 try:
     from openpyxl import load_workbook
 except ImportError:
@@ -899,6 +900,7 @@ elif section == "✏️ Редагування даних":
             # Спробуємо зберегти в Google Sheets
             if save_to_google_sheets(edited_df, reports_table):
                 st.cache_data.clear()
+                time.sleep(2)  # Затримка щоб побачити повідомлення
                 st.rerun()
             else:
                 # Якщо не вдалося, зберігаємо локально
@@ -908,6 +910,7 @@ elif section == "✏️ Редагування даних":
                     st.cache_data.clear()
                     abs_path = os.path.abspath(saved_file)
                     st.success(f"✅ Зміни збережено локально в: `{abs_path}`")
+                    time.sleep(2)  # Затримка щоб побачити повідомлення
                     st.rerun()
         
         # Кнопки для додаткових дій
@@ -961,6 +964,7 @@ elif section == "✏️ Редагування даних":
                     if save_to_google_sheets(new_df, reports_table):
                         # Якщо збереження в Google Sheets успішне, очищаємо кеш
                         st.cache_data.clear()
+                        time.sleep(2)  # Затримка щоб побачити повідомлення
                         st.rerun()
                     else:
                         # Якщо не вдалося, зберігаємо локально
@@ -970,6 +974,7 @@ elif section == "✏️ Редагування даних":
                             st.cache_data.clear()
                             abs_path = os.path.abspath(saved_file)
                             st.success(f"✅ Новий запис додано локально в: `{abs_path}`")
+                            time.sleep(2)  # Затримка щоб побачити повідомлення
                             st.rerun()
                 else:
                     st.error("❌ Заповніть обов'язкові поля: LakeHouse, Folder, Element")
