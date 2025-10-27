@@ -30,7 +30,7 @@ def load_lakes_and_reports(excel_path):
         reports_df = None
         
         # Шукаємо лист з лейками (можливі варіанти назв)
-        lake_sheet_names = ['Lakes', 'lakes', 'lake', 'data_lakes', 'лейки', 'Data Lakes']
+        lake_sheet_names = ['Lakes']
         for sheet_name in lake_sheet_names:
             if sheet_name in available_sheets:
                 lakes_df = pd.read_excel(xl, sheet_name)
@@ -306,8 +306,6 @@ section = st.sidebar.radio(
      "💧 Оновлення LakeHouses", 
      "📊 Оновлення PowerBI Report",
      "✏️ Редагування даних",
-     "🔌 Підключення джерел",
-     "🆘 Troubleshooting",
      "📞 Контакти та ресурси"]
 )
 
