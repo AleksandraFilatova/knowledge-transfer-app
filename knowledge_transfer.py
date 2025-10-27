@@ -86,6 +86,9 @@ def process_text_with_images(text: str):
                 elif 'github.com' in image_path and '/blob/' in image_path:
                     raw_url = image_path.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/')
                     display_image_from_path(raw_url, width=600)
+                elif image_path.startswith('http'):
+                    # Будь-який URL (Google Drive, OneDrive, тощо)
+                    display_image_from_path(image_path, width=600)
                 else:
                     display_image_from_path(image_path, width=600)
     else:
@@ -295,7 +298,7 @@ st.set_page_config(page_title="Knowledge Transfer App", page_icon="🧠", layout
 # ==================== НАВІГАЦІЯ ====================
 st.sidebar.title("🗂️ Навігація")
 st.sidebar.markdown("### Оберіть розділ:")
-section = st.sidebar.radio("", ["🏠 Головна", "💧 LakeHouses", "📊 PowerBI Report", "✏️ Редагування даних", "📞 Контакти та ресурси"])
+section = st.sidebar.radio("", ["🏠 Головна", "💧 Оновлення LakeHouses", "📊 Оновлення PowerBI Report", "✏️ Редагування даних", "📞 Контакти та ресурси"])
 st.sidebar.markdown("---")
 st.sidebar.info(f"📅 Останнє оновлення:\n{datetime.now().strftime('%d.%m.%Y')}")
 
@@ -349,7 +352,7 @@ if section == "🏠 Головна":
     with col2: st.metric("📊 Power BI звіти", unique_reports_count)
 
 # ==================== ОНОВЛЕННЯ DATA LAKES ====================
-elif section == "💧 LakeHouses":
+elif section == "💧 Оновлення LakeHouses":
     st.header("💧 Інструкції по оновленню LakeHouses")
     unique_lakes = []
     if lakes_table is not None and not lakes_table.empty:
@@ -581,6 +584,5 @@ elif section == "📞 Контакти та ресурси":
         """)
 
 # ----------------- конец файла -----------------
-
 
 
