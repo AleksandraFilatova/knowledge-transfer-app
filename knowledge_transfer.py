@@ -432,7 +432,8 @@ elif section == "💧 Оновлення LakeHouses":
                             st.success(f"📂 Вибрано папку: **{selected_folder}**")
                             folder_data = lake_data[lake_data['Folder'] == selected_folder]
                             st.subheader("🧩 Елементи папки")
-                            display_columns = folder_data.columns[2:8]
+                            # Відображаємо всі колонки крім перших двох (LakeHouse, Folder)
+                            display_columns = folder_data.columns[2:]
                             if 'URL' in display_columns:
                                 display_columns = [c for c in display_columns if c != 'URL']
                             if 'Element' in display_columns and 'URL' in folder_data.columns:
