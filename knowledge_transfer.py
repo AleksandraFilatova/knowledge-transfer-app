@@ -342,8 +342,11 @@ if section == "🏠 Головна":
     Ця база знань містить інформацію для підтримки та оновлення наших LakeHouses та Power BI Reports.
     """)
     col1, col2 = st.columns(2)
-    with col1: st.metric("🏞️ Data Lakes", len(lakes) if lakes else 0)
-    with col2: st.metric("📊 Power BI звіти", len(reports) if reports else 0)
+    # Підраховуємо унікальні значення
+    unique_lakes_count = len(set(lakes)) if lakes else 0
+    unique_reports_count = len(set(reports)) if reports else 0
+    with col1: st.metric("🏞️ Data Lakes", unique_lakes_count)
+    with col2: st.metric("📊 Power BI звіти", unique_reports_count)
 
 # ==================== ОНОВЛЕННЯ DATA LAKES ====================
 elif section == "💧 Оновлення LakeHouses":
