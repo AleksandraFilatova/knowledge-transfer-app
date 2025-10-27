@@ -7,10 +7,14 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from PIL import Image
 import base64
+import requests
 
 # ==== CONFIG SECTION ====
 # Путь к Excel с лейками и звітами. Для Streamlit Cloud використовуємо відносний шлях
 EXCEL_FILE_PATH = os.environ.get("KNOWLEDGE_TRANSFER_CONFIG_PATH", "LakeHouse.xlsx")  # Шлях до твого файлу
+
+# GitHub URL для файлу (raw формат)
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/AleksandraFilatova/knowledge-transfer-app/main/LakeHouse.xlsx"
 
 # ======= Функція для читання інформації з Excel =========
 @st.cache_data(ttl=300)
@@ -184,16 +188,29 @@ def process_text_with_images(text):
         # Якщо немає зображень, просто показуємо текст
         st.markdown(text)
 
+def download_file_from_github(url, local_path):
+    """
+    Завантажує файл з GitHub
+    """
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        with open(local_path, 'wb') as f:
+            f.write(response.content)
+        return True
+    except Exception as e:
+        return False
+
 def save_data_to_excel(df, filename):
     """
     Зберігає DataFrame в Excel файл
     """
     try:
         df.to_excel(filename, index=False)
-        return True
+        return True, filename
     except Exception as e:
         st.error(f"❌ Помилка при збереженні: {e}")
-        return False
+        return False, None
 
 def create_lakes_visualization(lakes_df):
     """
@@ -302,21 +319,32 @@ st.sidebar.info(f"📅 Останнє оновлення:\n{datetime.now().strft
 # Перевіряємо, чи файл існує локально
 if os.path.exists(EXCEL_FILE_PATH):
     lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
+    # Показуємо повідомлення, де зберігаються дані
+    abs_path = os.path.abspath(EXCEL_FILE_PATH)
+    st.sidebar.success(f"📂 Файл: `{abs_path}`")
 else:
-    # Якщо файл не знайдено, пропонуємо завантажити
-    st.warning("⚠️ Файл LakeHouse.xlsx не знайдено. Будь ласка, завантажте файл:")
-    uploaded_file = st.file_uploader("Завантажте Excel файл", type=['xlsx', 'xls'])
-    
-    if uploaded_file is not None:
-        # Зберігаємо завантажений файл
-        with open("LakeHouse.xlsx", "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        st.success("✅ Файл завантажено! Оновлюємо дані...")
-        lakes, reports, lakes_table, reports_table = load_lakes_and_reports("LakeHouse.xlsx")
+    # Якщо файл не знайдено локально, спробуємо завантажити з GitHub
+    if download_file_from_github(GITHUB_RAW_URL, EXCEL_FILE_PATH):
+        lakes, reports, lakes_table, reports_table = load_lakes_and_reports(EXCEL_FILE_PATH)
+        abs_path = os.path.abspath(EXCEL_FILE_PATH)
+        st.sidebar.success(f"✅ Файл завантажено з GitHub: `{abs_path}`")
     else:
-        # Показуємо заглушку
-        lakes, reports, lakes_table, reports_table = [], [], None, None
-        st.info("👆 Завантажте Excel файл для початку роботи")
+        # Якщо не вдалося завантажити з GitHub, пропонуємо завантажити вручну
+        st.warning("⚠️ Файл LakeHouse.xlsx не знайдено. Будь ласка, завантажте файл:")
+        uploaded_file = st.file_uploader("Завантажте Excel файл", type=['xlsx', 'xls'])
+        
+        if uploaded_file is not None:
+            # Зберігаємо завантажений файл
+            with open("LakeHouse.xlsx", "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.success("✅ Файл завантажено! Оновлюємо дані...")
+            lakes, reports, lakes_table, reports_table = load_lakes_and_reports("LakeHouse.xlsx")
+            abs_path = os.path.abspath("LakeHouse.xlsx")
+            st.sidebar.info(f"📂 Локальний файл: `{abs_path}`")
+        else:
+            # Показуємо заглушку
+            lakes, reports, lakes_table, reports_table = [], [], None, None
+            st.info("👆 Завантажте Excel файл для початку роботи")
 
 # ==================== ГОЛОВНА СТОРІНКА ====================
 if section == "🏠 Головна":
@@ -657,11 +685,13 @@ elif section == "✏️ Редагування даних":
         
         # Автоматичне збереження при змінах
         if not edited_df.equals(lakes_table):
-            if save_data_to_excel(edited_df, "LakeHouse.xlsx"):
+            success, saved_file = save_data_to_excel(edited_df, "LakeHouse.xlsx")
+            if success:
                 # Очищуємо кеш після збереження
                 st.cache_data.clear()
-                st.success("✅ Зміни збережено локально!")
-                st.info("💡 **Важливо:** Для синхронізації з Streamlit Cloud завантаж файл `LakeHouse.xlsx` в GitHub репозиторій")
+                abs_path = os.path.abspath(saved_file)
+                st.success(f"✅ Зміни збережено локально в: `{abs_path}`")
+                st.info("💡 **Важливо:** Для синхронізації з іншими користувачами завантажте оновлений файл на GitHub вручну")
                 st.rerun()
         
         # Кнопки для додаткових дій
@@ -711,10 +741,12 @@ elif section == "✏️ Редагування даних":
                     # Додаємо новий рядок
                     new_df = pd.concat([lakes_table, pd.DataFrame([new_row])], ignore_index=True)
                     
-                    if save_data_to_excel(new_df, "LakeHouse.xlsx"):
+                    success, saved_file = save_data_to_excel(new_df, "LakeHouse.xlsx")
+                    if success:
                         # Очищуємо кеш, щоб після перезапуску завантажити нові дані
                         st.cache_data.clear()
-                        st.success("✅ Новий запис додано!")
+                        abs_path = os.path.abspath(saved_file)
+                        st.success(f"✅ Новий запис додано та збережено в: `{abs_path}`")
                         st.rerun()
                 else:
                     st.error("❌ Заповніть обов'язкові поля: LakeHouse, Folder, Element")
