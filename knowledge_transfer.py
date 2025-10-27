@@ -394,7 +394,7 @@ section = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.info(f"📅 Останнє оновлення:\n{datetime.now().strftime('%d.%m.%Y')}")
 
-# Кнопка для відновлення файлу з OneDrive або GitHub
+# Кнопка для відновлення файлу з GitHub
 if st.sidebar.button("🔄 Відновити файл"):
     try:
         # Видаляємо пошкоджений файл
@@ -405,21 +405,14 @@ if st.sidebar.button("🔄 Відновити файл"):
             except:
                 st.sidebar.warning("⚠️ Не вдалося видалити файл")
         
-        # Спробуємо завантажити з OneDrive
-        st.sidebar.info("🔄 Завантажую з OneDrive...")
-        if download_file_from_onedrive(ONEDRIVE_URL, EXCEL_FILE_PATH):
-            st.sidebar.success("✅ Файл відновлено з OneDrive!")
+        # Завантажуємо з GitHub
+        st.sidebar.info("🔄 Завантажую з GitHub...")
+        if download_file_from_github(GITHUB_RAW_URL, EXCEL_FILE_PATH):
+            st.sidebar.success("✅ Файл відновлено з GitHub!")
             st.cache_data.clear()
             st.rerun()
         else:
-            # Спробуємо GitHub
-            st.sidebar.info("🔄 Спробую GitHub...")
-            if download_file_from_github(GITHUB_RAW_URL, EXCEL_FILE_PATH):
-                st.sidebar.success("✅ Файл відновлено з GitHub!")
-                st.cache_data.clear()
-                st.rerun()
-            else:
-                st.sidebar.error("❌ Не вдалося завантажити файл")
+            st.sidebar.error("❌ Не вдалося завантажити файл")
     except Exception as e:
         st.sidebar.error(f"❌ Помилка: {e}")
 
