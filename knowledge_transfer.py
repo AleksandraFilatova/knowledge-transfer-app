@@ -506,26 +506,39 @@ elif section == "✏️ Редагування даних":
             st.download_button("📥 Завантажити CSV", data=csv, file_name=f"lakes_data_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
 
         st.subheader("➕ Додати новий запис")
+        # Визначаємо всі колонки з таблиці (крім тих, що додані автоматично)
+        all_columns = lakes_table.columns.tolist() if lakes_table is not None else []
+        form_columns = {}
+        
         with st.form("add_new_record"):
             c1, c2 = st.columns(2)
             with c1:
-                new_lakehouse = st.text_input("LakeHouse *")
-                new_folder = st.text_input("Folder *")
-                new_element = st.text_input("Element *")
-                new_url = st.text_input("URL")
+                for col in all_columns[:len(all_columns)//2 + 1]:
+                    if col == 'LakeHouse':
+                        form_columns[col] = st.text_input("LakeHouse *", key=f"form_{col}")
+                    elif col == 'Folder':
+                        form_columns[col] = st.text_input("Folder *", key=f"form_{col}")
+                    elif col == 'Element':
+                        form_columns[col] = st.text_input("Element *", key=f до"form_{col}")
+                    elif col == 'URL':
+                        form_columns[col] = st.text_input("URL", key=f"form_{col}")
+                    elif col not in ['Загальна інформація про лейк', 'Внесення змін']:
+                        form_columns[col] = st.text_input(col, key=f"form_{col}")
             with c2:
-                new_info = st.text_area("Загальна інформація про лейк")
-                new_changes = st.text_area("Внесення змін")
+                for col in all_columns[len(all_columns)//2 + 1:]:
+                    if col == 'Загальна інформація про лейк':
+                        form_columns[col] = st.text_area("Загальна інформація про лейк", key=f"form_{col}")
+                    elif col == 'Внесення змін':
+                        form_columns[col] = st.text_area("Внесення змін", key=f"form_{col}")
+                    elif col not in ['LakeHouse', 'Folder', 'Element', 'URL']:
+                        form_columns[col] = st.text_area(col, key=f"form_{col}")
+            
             if st.form_submit_button("➕ Додати запис"):
-                if new_lakehouse and new_folder and new_element:
-                    new_row = {
-                        'LakeHouse': new_lakehouse,
-                        'Folder': new_folder,
-                        'Element': new_element,
-                        'URL': new_url or '',
-                        'Загальна інформація про лейк': new_info or '',
-                        'Внесення змін': new_changes or ''
-                    }
+                # Перевірка обов'язкових полів
+                if form_columns.get('LakeHouse') and form_columns.get('Folder') and form_columns.get('Element'):
+                    new_row = {}
+                    for col in all_columns:
+                        new_row[col] = form_columns.get(col, '')
                     new_df = pd.concat([lakes_table, pd.DataFrame([new_row])], ignore_index=True)
 
                     if save_to_google_sheets(new_df, reports_table):
