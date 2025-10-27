@@ -20,7 +20,7 @@ try:
     GOOGLE_SHEETS_AVAILABLE = True
 except ImportError:
     GOOGLE_SHEETS_AVAILABLE = False
-    st.info("💡 Для запису в Google Sheets встановіть: `pip install gspread google-auth`")
+    # Не виводимо повідомлення тут, тому що Streamlit ще не ініціалізований
 
 # ==== CONFIG SECTION ====
 # Використовуємо локальну папку поза OneDrive для збереження даних
@@ -310,12 +310,14 @@ def save_to_google_sheets(df, reports_table=None):
         st.info("🔄 Спроба збереження в Google Sheets...")
         
         # Перевіряємо чи є credentials файл для авторизації
-        credentials_file = "service_account_credentials.json"
+        # Спочатку шукаємо поруч зі скриптом
+        credentials_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "service_account_credentials.json")
+        
+        # Якщо не знайдено, шукаємо в інших місцях
         if not os.path.exists(credentials_file):
-            # Спробуємо знайти файл в різних місцях
             possible_paths = [
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), credentials_file),
-                os.path.join(os.path.expanduser("~"), credentials_file),
+                "service_account_credentials.json",  # Поточна папка
+                os.path.join(os.path.expanduser("~"), "service_account_credentials.json"),
             ]
             
             credentials_found = False
@@ -343,7 +345,9 @@ def save_to_google_sheets(df, reports_table=None):
         
         try:
             # Авторизуємося через Service Account
+            st.info(f"🔑 Використовую credentials файл: {credentials_file}")
             gc = gspread.service_account(filename=credentials_file)
+            st.info(f"📊 Відкриваю Google Sheets з ID: {GOOGLE_SHEETS_ID}")
             sh = gc.open_by_key(GOOGLE_SHEETS_ID)
             
             # Оновлюємо лист Lakes
